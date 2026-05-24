@@ -1,0 +1,394 @@
+---
+import { CONFIG } from '../lib/config';
+import { t, MESSAGES, LOCALE } from '../i18n';
+interface Props {
+  title?: string;
+  /** Active tab in the header. */
+  active?: 'tareas' | 'proyectos';
+}
+const { title = t('header.tabs.tasks'), active = 'tareas' } = Astro.props;
+const headerTitle   = CONFIG.ui.title || t('header.title_fallback');
+const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
+---
+<!doctype html>
+<html lang={LOCALE}>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} · {headerTitle}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <!-- Anti-flash: aplica el tema ANTES del primer paint, leyendo localStorage o prefers-color-scheme. -->
+  <script is:inline>
+    (function() {
+      try {
+        const saved = localStorage.getItem('theme');
+        const sys = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark = saved === 'dark' || (saved == null && sys);
+        if (dark) document.documentElement.classList.add('dark');
+      } catch {}
+    })();
+  </script>
+  <style>
+    body { font-feature-settings: 'cv02','cv03','cv04','cv11'; }
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(203 213 225 / 0.6); border-radius: 999px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.8); }
+    .dark .scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(51 65 85 / 0.7); }
+    .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgb(71 85 105 / 0.9); }
+    /* Drag visual */
+    .dragging { opacity: 0.35; transform: scale(0.98); transition: transform 120ms, opacity 120ms; }
+    /* Card prose - light */
+    .prose-task h1 { font-size: 1.15rem; font-weight: 700; margin: 0.5rem 0 0.25rem; color: rgb(15 23 42); }
+    .prose-task h2 { font-size: 1.0rem; font-weight: 700; margin: 0.5rem 0 0.25rem; color: rgb(30 41 59); }
+    .prose-task h3 { font-size: 0.95rem; font-weight: 600; margin: 0.45rem 0 0.2rem; color: rgb(51 65 85); }
+    .prose-task p { margin: 0.35rem 0; line-height: 1.55; color: rgb(51 65 85); }
+    .prose-task ul, .prose-task ol { padding-left: 1.25rem; margin: 0.35rem 0; }
+    .prose-task li { margin: 0.15rem 0; line-height: 1.5; }
+    .prose-task code { background: rgb(241 245 249); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; color: rgb(76 29 149); }
+    .prose-task pre { background: rgb(15 23 42); color: rgb(226 232 240); padding: 0.75rem; border-radius: 8px; overflow-x: auto; font-size: 0.85em; }
+    .prose-task pre code { background: transparent; color: inherit; padding: 0; }
+    .prose-task a { color: rgb(79 70 229); text-decoration: underline; text-decoration-color: rgb(165 180 252); text-underline-offset: 2px; }
+    .prose-task a:hover { text-decoration-color: rgb(79 70 229); }
+    .prose-task blockquote { border-left: 3px solid rgb(199 210 254); padding-left: 0.75rem; color: rgb(71 85 105); margin: 0.5rem 0; font-style: italic; }
+    .prose-task img { max-width: 100%; height: auto; border-radius: 10px; margin: 0.5rem 0; box-shadow: 0 1px 3px rgb(15 23 42 / 0.1), 0 4px 12px rgb(15 23 42 / 0.06); }
+    .prose-task input[type="checkbox"] { width: 1rem; height: 1rem; margin-right: 0.4rem; accent-color: rgb(99 102 241); vertical-align: -2px; }
+    .prose-task ul li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1rem; }
+    .prose-task .wikilink { background: rgb(238 242 255); color: rgb(79 70 229); padding: 1px 6px; border-radius: 4px; font-weight: 500; font-size: 0.9em; text-decoration: none; }
+    /* Card prose - dark */
+    .dark .prose-task h1 { color: rgb(241 245 249); }
+    .dark .prose-task h2 { color: rgb(226 232 240); }
+    .dark .prose-task h3 { color: rgb(203 213 225); }
+    .dark .prose-task p { color: rgb(203 213 225); }
+    .dark .prose-task code { background: rgb(30 41 59); color: rgb(196 181 253); }
+    .dark .prose-task pre { background: rgb(2 6 23); color: rgb(226 232 240); }
+    .dark .prose-task a { color: rgb(165 180 252); text-decoration-color: rgb(99 102 241); }
+    .dark .prose-task a:hover { text-decoration-color: rgb(165 180 252); }
+    .dark .prose-task blockquote { border-left-color: rgb(67 56 202); color: rgb(148 163 184); }
+    .dark .prose-task .wikilink { background: rgb(49 46 129 / 0.4); color: rgb(199 210 254); }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 antialiased selection:bg-brand-200 selection:text-brand-900 dark:selection:bg-brand-700 dark:selection:text-brand-50 transition-colors">
+  <!-- Background decorativo -->
+  <div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+    <div class="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] rounded-full bg-gradient-to-br from-brand-200/30 via-violet-200/20 to-transparent dark:from-brand-600/15 dark:via-violet-700/10 blur-3xl"></div>
+    <div class="absolute bottom-[-15%] right-[-10%] w-[700px] h-[700px] rounded-full bg-gradient-to-tr from-sky-200/25 via-indigo-200/20 to-transparent dark:from-sky-700/10 dark:via-indigo-700/10 blur-3xl"></div>
+  </div>
+
+  <header class="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800 sticky top-0 z-30">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between gap-3">
+      <a href="/" class="flex items-center gap-3 group">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-lift flex items-center justify-center group-hover:scale-105 transition-transform">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        </div>
+        <div class="leading-tight hidden sm:block">
+          <span class="text-lg font-bold text-slate-900 dark:text-slate-100 block tracking-tight">{headerTitle}</span>
+          <span class="text-[11px] text-slate-500 dark:text-slate-400 block">{t('header.subtitle')}</span>
+        </div>
+      </a>
+
+      <!-- Tabs: Tasks | Projects -->
+      <nav class="flex bg-slate-100 dark:bg-slate-800/80 rounded-xl p-1 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+        <a href="/" class={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+          active === 'tareas'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+        }`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>{t('header.tabs.tasks')}</span>
+        </a>
+        <a href="/proyectos" class={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+          active === 'proyectos'
+            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+        }`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>{t('header.tabs.projects')}</span>
+        </a>
+      </nav>
+
+      <div class="flex items-center gap-2">
+        {claudeEnabled && (
+        <!-- Notifications dropdown — only rendered when Claude integration is
+             enabled in config. The events all come from the claude_active
+             transitions detected by the polling loop, so without Claude the
+             dropdown would just be empty forever. -->
+        <div class="relative" id="notif-wrapper">
+          <button id="notif-btn" type="button" aria-label={t('header.notifications')}
+                  class="w-9 h-9 rounded-xl flex items-center justify-center bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-soft relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center tabular-nums ring-2 ring-white dark:ring-slate-900"></span>
+          </button>
+          <div id="notif-panel" class="hidden absolute right-0 mt-2 w-[320px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-drag ring-1 ring-slate-200/60 dark:ring-slate-700/60 z-50 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 class="text-[12px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">{t('notifications.panel_title')}</h3>
+              <button id="notif-clear" type="button" class="text-[11px] text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 font-medium">{t('notifications.clear')}</button>
+            </div>
+            <div id="notif-permission-cta" class="hidden px-4 py-3 bg-amber-50/60 dark:bg-amber-900/20 border-b border-amber-200/40 dark:border-amber-700/30 text-[11.5px] text-amber-800 dark:text-amber-200">
+              <button id="notif-grant-btn" class="font-semibold underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100">{t('notifications.enable_system')}</button>
+              <p id="notif-permission-hint" class="mt-1 text-[10.5px] text-amber-700 dark:text-amber-300 opacity-80"></p>
+            </div>
+            <div id="notif-list" class="max-h-[60vh] overflow-y-auto scrollbar-thin"></div>
+          </div>
+        </div>
+        )}
+        <!-- Theme toggle -->
+        <button id="theme-toggle" type="button" aria-label={t('header.theme_toggle')}
+                class="w-9 h-9 rounded-xl flex items-center justify-center bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-soft">
+          <svg class="hidden dark:block" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="block dark:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        {active === 'tareas' && (
+          <button id="new-task-btn" class="group bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lift hover:shadow-card transition-all flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-90 transition-transform duration-300"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span class="hidden sm:inline">{t('header.new_task')}</span><span class="sm:hidden">{t('header.new_task_short')}</span>
+          </button>
+        )}
+        {active === 'proyectos' && (
+          <button id="new-project-btn" class="group bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lift hover:shadow-card transition-all flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-90 transition-transform duration-300"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span class="hidden sm:inline">{t('header.new_project')}</span><span class="sm:hidden">{t('header.new_project_short')}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="fixed top-20 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <main class="max-w-[1600px] mx-auto px-3 sm:px-8 py-6 sm:py-8">
+    <slot />
+  </main>
+
+  <footer class="max-w-[1600px] mx-auto px-4 py-8 text-xs text-slate-400 dark:text-slate-600 text-center">
+    Nebula · vault/tareas · ⌘+N para nueva tarea
+  </footer>
+
+  <script is:inline define:vars={{ MSG: MESSAGES }}>
+    // Theme toggle. Persists in localStorage. Anti-flash in <head> applies
+    // the initial class; this script only handles the click.
+    document.getElementById('theme-toggle')?.addEventListener('click', () => {
+      const isDark = document.documentElement.classList.toggle('dark');
+      try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch {}
+    });
+
+    // Notifications de Claude. El botón de campana ya no es toggle on/off,
+    // ahora abre un popover con la lista persistida de eventos detectados por
+    // el polling de index.astro (start/done de tareas). Layers:
+    //   1) Toast in-page (siempre)
+    //   2) Notification API nativa (si el usuario otorgó permiso desde el CTA)
+    //   3) Lista persistida en localStorage (`tareas-ui:notifs:items`)
+    //
+    // Index.astro pushea cada evento con `pushClaudeNotif()` (definido aquí en
+    // window) — esto guarda en localStorage + dispatch del evento `claude-notif`
+    // que el popover escucha para refrescar.
+    //
+    // Gotcha HTTP: Notification API requiere secure context. Sobre HTTP
+    // Tailscale Chromium/Safari bloquean — el popover muestra el motivo en el
+    // CTA de permiso.
+    (function() {
+      const STORE_KEY = 'tareas-ui:notifs:items';
+      const SEEN_KEY  = 'tareas-ui:notifs:lastSeen';
+      const MAX_ITEMS = 50;
+      const hasNotifAPI = typeof window !== 'undefined' && 'Notification' in window;
+
+      const btn      = document.getElementById('notif-btn');
+      const panel    = document.getElementById('notif-panel');
+      const badge    = document.getElementById('notif-badge');
+      const list     = document.getElementById('notif-list');
+      const cta      = document.getElementById('notif-permission-cta');
+      const ctaHint  = document.getElementById('notif-permission-hint');
+      const grantBtn = document.getElementById('notif-grant-btn');
+      const clearBtn = document.getElementById('notif-clear');
+      if (!btn || !panel || !list) return;
+
+      // ── Storage helpers ─────────────────────────────────────────────
+      function readItems()  { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; } }
+      function writeItems(items) { try { localStorage.setItem(STORE_KEY, JSON.stringify(items.slice(0, MAX_ITEMS))); } catch {} }
+      function readSeen()   { try { return Number(localStorage.getItem(SEEN_KEY) || '0'); } catch { return 0; } }
+      function writeSeen(ts){ try { localStorage.setItem(SEEN_KEY, String(ts)); } catch {} }
+
+      // ── Permission helpers ──────────────────────────────────────────
+      function permissionState() {
+        if (!hasNotifAPI) return 'unsupported';
+        return Notification.permission; // 'default' | 'granted' | 'denied'
+      }
+      async function requestNativePermission() {
+        if (!hasNotifAPI) return 'unsupported';
+        if (Notification.permission !== 'default') return Notification.permission;
+        try { return await Notification.requestPermission(); }
+        catch { return 'denied'; }
+      }
+
+      // ── Format helpers ──────────────────────────────────────────────
+      function relTime(ts) {
+        const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+        if (sec < 60) return 'ahora';
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `hace ${min}m`;
+        const hr = Math.floor(min / 60);
+        if (hr < 24)  return `hace ${hr}h`;
+        return `hace ${Math.floor(hr/24)}d`;
+      }
+      function fullTime(ts) {
+        return new Date(ts).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+      }
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      }
+
+      // ── Render ──────────────────────────────────────────────────────
+      // 4 kinds — start / review (→pending-review) / archived (→done) / stopped (legacy op=stop).
+      // Backward compat: items viejos con kind='done' (pre-fix) se mapean a 'review'
+      // porque en esa época op=done era equivalente al actual op=review.
+      const KIND_META = {
+        start:    { label: MSG.notifications.labels.start,    ring: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',   text: 'text-orange-700 dark:text-orange-400',
+                    icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>' },
+        review:   { label: MSG.notifications.labels.review,   ring: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300',   text: 'text-yellow-700 dark:text-yellow-400',
+                    icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' },
+        archived: { label: MSG.notifications.labels.archived, ring: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300', text: 'text-emerald-700 dark:text-emerald-400',
+                    icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>' },
+        stopped:  { label: MSG.notifications.labels.stopped,  ring: 'bg-slate-100 dark:bg-slate-700/40 text-slate-600 dark:text-slate-300',       text: 'text-slate-600 dark:text-slate-400',
+                    icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>' },
+      };
+      function kindMeta(k) { return KIND_META[k === 'done' ? 'review' : k] || KIND_META.start; }
+      function renderList() {
+        const items = readItems();
+        if (!items.length) {
+          list.innerHTML = `<div class="px-4 py-8 text-center text-[12px] text-slate-400 dark:text-slate-500 italic">${MSG.notifications.no_recent}</div>`;
+          return;
+        }
+        list.innerHTML = items.map(it => {
+          const m = kindMeta(it.kind);
+          return `<div class="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+            <div class="flex items-start gap-2.5">
+              <span class="shrink-0 w-5 h-5 rounded-full ${m.ring} flex items-center justify-center mt-0.5">${m.icon}</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 leading-snug">${escapeHtml(it.title)}</p>
+                <div class="flex items-center gap-2 mt-0.5 text-[10.5px] text-slate-500 dark:text-slate-400">
+                  <span class="font-semibold ${m.text}">${m.label}</span>
+                  <span title="${escapeHtml(fullTime(it.ts))}">${relTime(it.ts)}</span>
+                </div>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      function renderPermissionCTA() {
+        const state = permissionState();
+        if (state === 'granted') { cta.classList.add('hidden'); return; }
+        cta.classList.remove('hidden');
+        if (state === 'unsupported') {
+          grantBtn.classList.add('hidden');
+          ctaHint.textContent = MSG.notifications.hint_unsupported;
+        } else if (state === 'denied') {
+          grantBtn.classList.add('hidden');
+          ctaHint.textContent = window.isSecureContext
+            ? MSG.notifications.hint_denied
+            : MSG.notifications.hint_denied_insecure;
+        } else {
+          grantBtn.classList.remove('hidden');
+          ctaHint.textContent = window.isSecureContext
+            ? MSG.notifications.hint_default_secure
+            : MSG.notifications.hint_default_insecure;
+        }
+      }
+
+      function updateBadge() {
+        const items = readItems();
+        const seen = readSeen();
+        const unread = items.filter(it => it.ts > seen).length;
+        if (unread > 0) {
+          badge.textContent = unread > 99 ? '99+' : String(unread);
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      // ── Open/close panel ────────────────────────────────────────────
+      function openPanel() {
+        renderPermissionCTA();
+        renderList();
+        panel.classList.remove('hidden');
+        // Marcar como leídas al abrir (consume el badge)
+        writeSeen(Date.now());
+        updateBadge();
+        setTimeout(() => {
+          document.addEventListener('click', outsideClick, true);
+          document.addEventListener('keydown', escClose);
+        }, 0);
+      }
+      function closePanel() {
+        panel.classList.add('hidden');
+        document.removeEventListener('click', outsideClick, true);
+        document.removeEventListener('keydown', escClose);
+      }
+      function outsideClick(e) {
+        if (!panel.contains(e.target) && !btn.contains(e.target)) closePanel();
+      }
+      function escClose(e) { if (e.key === 'Escape') closePanel(); }
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (panel.classList.contains('hidden')) openPanel();
+        else closePanel();
+      });
+
+      clearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        writeItems([]);
+        writeSeen(Date.now());
+        renderList();
+        updateBadge();
+      });
+
+      grantBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await requestNativePermission();
+        renderPermissionCTA();
+      });
+
+      // ── API expuesta a index.astro ─────────────────────────────────
+      // index.astro la llama cuando el polling detecta un start/done. Hacemos
+      // toda la persistencia + notificación nativa acá para que la lógica esté
+      // en un solo lugar.
+      window.pushClaudeNotif = function pushClaudeNotif({ kind, title, file }) {
+        const ts = Date.now();
+        const id = ts + ':' + (file || title);
+        const items = readItems();
+        items.unshift({ id, kind, title, file: file || null, ts });
+        writeItems(items);
+        updateBadge();
+        if (!panel.classList.contains('hidden')) {
+          renderList();
+          writeSeen(ts); // si está abierto, no contar como unread
+          updateBadge();
+        }
+        // OS native notification (best-effort)
+        if (hasNotifAPI && Notification.permission === 'granted') {
+          try {
+            new Notification(MSG.notifications.native[kind] || MSG.notifications.native.start, {
+              body:   title,
+              tag:    'claude-' + kind + '-' + (file || title),
+              icon:   '/favicon.svg',
+              silent: kind === 'start',
+            });
+          } catch {}
+        }
+      };
+
+      // ── Init ────────────────────────────────────────────────────────
+      updateBadge();
+      // Refresca el badge cada 60s para que el "hace Nm" no se quede stale
+      // si el usuario abre el panel después de un rato.
+      setInterval(() => { if (!panel.classList.contains('hidden')) renderList(); }, 60000);
+    })();
+  </script>
+</body>
+</html>

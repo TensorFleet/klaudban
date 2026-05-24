@@ -1,0 +1,158 @@
+{
+  "header": {
+    "title_fallback": "Vault",
+    "subtitle": "markdown kanban",
+    "tabs": { "tasks": "Tasks", "projects": "Projects" },
+    "new_task": "New task",
+    "new_task_short": "New",
+    "new_project": "New project",
+    "new_project_short": "New",
+    "theme_toggle": "Toggle theme",
+    "notifications": "View notifications"
+  },
+  "columns": {
+    "pending": "To do",
+    "doing": "In progress",
+    "blocked": "Blocked",
+    "done": "Done",
+    "pending_review": "Pending review"
+  },
+  "stats": {
+    "pending": "To do",
+    "doing": "In progress",
+    "overdue": "Overdue",
+    "today": "Today",
+    "filtering": "filtering"
+  },
+  "filters": {
+    "search_tasks": "Search tasks…",
+    "search_projects": "Search projects…",
+    "clear": "Clear",
+    "project": "Project",
+    "priority": "Priority",
+    "due": "Due",
+    "category": "Category",
+    "remove": "Remove filter"
+  },
+  "due": {
+    "no_date": "no date",
+    "overdue_by": "{n}d overdue",
+    "due_today": "due today",
+    "tomorrow": "tomorrow",
+    "in_days": "in {n}d",
+    "this_week": "This week"
+  },
+  "priority": {
+    "critical": "Critical",
+    "high": "High",
+    "normal": "Normal",
+    "low": "Low"
+  },
+  "status": {
+    "pending": "To do",
+    "doing": "In progress",
+    "blocked": "Blocked",
+    "pending_review": "Pending review",
+    "done": "Done"
+  },
+  "color": {
+    "yellow": "Yellow",
+    "green": "Green",
+    "blue": "Blue",
+    "purple": "Purple",
+    "pink": "Pink",
+    "gray": "Gray",
+    "none": "No color",
+    "inherited_from_project": "Inherited from project",
+    "override_project": "Overriding project default ({label})",
+    "inherit_hint": "Cards for this project without a custom color inherit this one."
+  },
+  "modal": {
+    "labels": {
+      "status":     "Status",
+      "priority":   "Priority",
+      "color":      "Color",
+      "due":        "Due",
+      "project":    "Project",
+      "blocked_by": "Blocked by",
+      "body":       "Body",
+      "preview":    "Preview"
+    },
+    "title_placeholder": "What needs doing?",
+    "project_title_placeholder": "Project title",
+    "preview": "Preview",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "copy_prompt": "Copy prompt",
+    "change_color": "Change color",
+    "blocked_by_placeholder": "reason / dependency",
+    "slug_placeholder": "auto-generated from title",
+    "delete_confirm": "Delete \"{title}\"?\n\nThis removes the file from your vault. Cannot be undone.",
+    "title_required": "Title is required",
+    "no_title": "Task has no title",
+    "moved_to": "Moved to {label}",
+    "task_created": "Task created",
+    "task_deleted": "Task deleted",
+    "changes_saved": "Changes saved",
+    "project_created": "Project created",
+    "project_saved": "Project saved",
+    "project_deleted": "Project deleted",
+    "prompt_copied": "Prompt copied",
+    "copy_failed": "Could not copy to clipboard",
+    "save_order_failed": "Could not save order: {err}"
+  },
+  "card": {
+    "no_due_date_hint": "no date",
+    "nothing_here": "nothing here",
+    "show_older": "Show older",
+    "only_today": "Only today",
+    "show_older_tip": "Show tasks completed before today",
+    "only_today_tip": "Show only tasks completed today",
+    "new_task_in_project": "New task in this project",
+    "add_task_in_column": "Add task in this column",
+    "in_review_since": "In review since",
+    "working_since": "Working since"
+  },
+  "projects": {
+    "hero_total": "Total",
+    "hero_recent": "Recent (≤7d)",
+    "hero_stale": "Stale (>30d)",
+    "no_in_category": "No projects in this category.",
+    "no_recent_activity": "No recent activity",
+    "touched_today": "touched today",
+    "untouched_days": "untouched {n}d",
+    "updated_label": "Updated:",
+    "description_placeholder": "Project description in markdown…"
+  },
+  "notifications": {
+    "panel_title": "Notifications",
+    "clear": "Clear",
+    "enable_system": "Enable system notifications",
+    "no_recent": "No recent activity",
+    "hint_unsupported": "Your browser does not support system notifications. They will only appear here in the bell.",
+    "hint_denied_insecure": "Blocked: this site is not served over HTTPS. They will only appear here in the bell.",
+    "hint_denied": "Blocked by the browser. Change site permissions to allow.",
+    "hint_default_secure": "You'll get an OS popup each time Claude starts or finishes, even if the tab is in the background.",
+    "hint_default_insecure": "Your browser may block this since the site is not over HTTPS, but try it anyway.",
+    "labels": {
+      "start": "Working",
+      "review": "Pending review",
+      "archived": "Archived",
+      "stopped": "Stopped"
+    },
+    "toast": {
+      "start": "Claude started: {title}",
+      "review": "Claude finished: {title} · pending review",
+      "archived": "Claude archived: {title}",
+      "stopped": "Claude stopped: {title}"
+    },
+    "native": {
+      "start": "Claude started a task",
+      "review": "Claude finished · pending review",
+      "archived": "Claude archived a task",
+      "stopped": "Claude stopped a task"
+    }
+  }
+}

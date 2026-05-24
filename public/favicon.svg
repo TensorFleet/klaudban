@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+  <!-- Mini kanban: 4 columnas con tarjetas -->
+  <g fill="#ffffff">
+    <!-- Col 1: por hacer (2 tarjetas) -->
+    <rect x="11" y="14" width="11" height="9"  rx="2" opacity="0.95"/>
+    <rect x="11" y="26" width="11" height="13" rx="2" opacity="0.85"/>
+    <!-- Col 2: en curso (3 tarjetas pequeñas) -->
+    <rect x="26.5" y="14" width="11" height="7"  rx="2" opacity="0.95"/>
+    <rect x="26.5" y="24" width="11" height="9"  rx="2" opacity="0.85"/>
+    <rect x="26.5" y="36" width="11" height="6"  rx="2" opacity="0.75"/>
+    <!-- Col 3: bloqueada (1 tarjeta) -->
+    <rect x="42" y="14" width="11" height="11" rx="2" opacity="0.95"/>
+  </g>
+  <!-- Línea base sutil de columnas -->
+  <line x1="11" y1="50" x2="53" y2="50" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

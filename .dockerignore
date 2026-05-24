@@ -1,0 +1,16 @@
+node_modules
+dist
+.astro
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+README.md
+LICENSE
+tareas.config.json
+vault
+*.log
+.DS_Store
+.vscode
+.idea

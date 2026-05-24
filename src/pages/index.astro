@@ -1,0 +1,1592 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { listAll, listProjects } from '../lib/tasks';
+import { listProjectColors } from '../lib/projects';
+import { CONFIG } from '../lib/config';
+import { t, MESSAGES } from '../i18n';
+
+const tasks         = listAll();
+const projects      = listProjects();
+const projectColors = listProjectColors();
+const clientConfig  = {
+  timezone:      CONFIG.ui.timezone,
+  claudeEnabled: CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl,
+  apiBaseUrl:    CONFIG.claude.apiBaseUrl ?? '',
+};
+---
+<Layout title="Board">
+  <style is:global>
+    /* Card "Claude working": tres capas de box-shadow que pulsan en sync.
+       Capa 1: anillo nítido pegado al borde (definición).
+       Capa 2: halo medio difuso (highlight naranja).
+       Capa 3: glow externo amplio (presencia visual).
+       Pulse 1.8s para que se note sin ser molesto. */
+    @keyframes claude-working-pulse {
+      0%, 100% {
+        box-shadow:
+          0 0 0 1.5px rgba(251, 146, 60, 0.65),
+          0 0 0 5px   rgba(251, 146, 60, 0.18),
+          0 0 22px -2px rgba(249, 115, 22, 0.42);
+      }
+      50% {
+        box-shadow:
+          0 0 0 2.5px rgba(249, 115, 22, 1),
+          0 0 0 9px   rgba(251, 146, 60, 0.30),
+          0 0 44px 4px rgba(249, 115, 22, 0.70);
+      }
+    }
+    .claude-active-card {
+      animation: claude-working-pulse 1.8s ease-in-out infinite;
+      position: relative;
+      z-index: 1;
+    }
+    /* Variante amarilla para tareas en pending-review (Claude finished, esperando
+       que el usuario las marque como done). Misma estructura de 3 capas. */
+    @keyframes claude-review-pulse {
+      0%, 100% {
+        box-shadow:
+          0 0 0 1.5px rgba(234, 179, 8, 0.65),
+          0 0 0 5px   rgba(250, 204, 21, 0.18),
+          0 0 22px -2px rgba(234, 179, 8, 0.42);
+      }
+      50% {
+        box-shadow:
+          0 0 0 2.5px rgba(234, 179, 8, 1),
+          0 0 0 9px   rgba(250, 204, 21, 0.30),
+          0 0 44px 4px rgba(234, 179, 8, 0.70);
+      }
+    }
+    .claude-review-card {
+      animation: claude-review-pulse 1.8s ease-in-out infinite;
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+
+  <!-- HERO STATS -->
+  <section id="stats-hero" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7"></section>
+
+  <!-- FILTROS -->
+  <section class="mb-5">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+      <div class="relative flex-1 min-w-[200px] max-w-md">
+        <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20.5" y1="20.5" x2="16.65" y2="16.65"/></svg>
+        <input id="search" type="text" placeholder={t('filters.search_tasks')}
+               class="w-full bg-white dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-9 py-2.5 text-sm shadow-soft focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+        <button id="search-clear" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 text-lg leading-none">×</button>
+      </div>
+      <div id="chip-filters" class="flex flex-wrap items-center gap-1.5"></div>
+      <button id="clear-filters" class="hidden text-xs text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 px-2.5 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 font-medium transition-colors">{t('filters.clear')}</button>
+    </div>
+  </section>
+
+  <!-- BOARD -->
+  <div id="board" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5"></div>
+
+  <!-- MODAL -->
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md flex items-start sm:items-center justify-center p-2 sm:p-6 overflow-y-auto animate-fade-in">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-drag max-w-4xl w-full my-4 overflow-hidden animate-slide-up flex flex-col max-h-[92vh] ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+      <div class="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+        <div class="flex-1 min-w-0">
+          <input id="m-title" type="text" placeholder={t('modal.title_placeholder')}
+                 class="w-full text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-300 dark:placeholder-slate-600 border-0 focus:ring-0 outline-none px-0 py-0 tracking-tight" />
+          <p id="m-file" class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-mono truncate"></p>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="m-copy-prompt" title="Copy prompt"
+                  class="text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 w-9 h-9 flex items-center justify-center rounded-lg transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+          <button id="m-close" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 w-9 h-9 flex items-center justify-center rounded-lg text-xl leading-none transition-colors">×</button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto scrollbar-thin">
+        <div class="grid md:grid-cols-[260px_1fr] gap-0">
+          <aside class="p-5 sm:p-6 md:border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 space-y-5">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t('modal.labels.status')}</label>
+              <div id="m-status-pills" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.priority")}</label>
+              <div id="m-priority-pills" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.color")}</label>
+              <div id="m-color-swatches" class="flex flex-wrap gap-1.5"></div>
+              <p id="m-color-hint" class="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1.5 min-h-[14px]"></p>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.due")}</label>
+              <input id="m-due" type="date" class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all dark:[color-scheme:dark]" />
+              <p id="m-due-hint" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 min-h-[14px]"></p>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.project")}</label>
+              <select id="m-project" class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all">
+                <option value="">— ninguno —</option>
+                {projects.map(p => <option value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.blocked_by")}</label>
+              <input id="m-blocked-by" type="text" placeholder={t('modal.blocked_by_placeholder')}
+                     class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all dark:placeholder-slate-500" />
+            </div>
+          </aside>
+
+          <section class="p-5 sm:p-6 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Notas / subtareas</label>
+              <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 text-xs font-semibold">
+                <button id="tab-edit"    class="px-3 py-1 rounded-md transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">Edit</button>
+                <button id="tab-preview" class="px-3 py-1 rounded-md transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">Preview</button>
+              </div>
+            </div>
+            <textarea id="m-body" rows="14"
+                      placeholder="- [ ] Subtarea 1&#10;- [ ] Subtarea 2&#10;&#10;Notas libres en markdown.&#10;Embeds Obsidian: ![[archivo.png]]"
+                      class="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-mono leading-relaxed resize-y bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all scrollbar-thin dark:placeholder-slate-500"></textarea>
+            <div id="m-preview" class="hidden border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-800 prose-task overflow-auto scrollbar-thin" style="min-height: 14rem;"></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 px-6 py-4 bg-slate-50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800">
+        <button id="m-delete" class="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 font-semibold px-3 py-2 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          Delete permanente
+        </button>
+        <div class="flex gap-2">
+          <button id="m-cancel" class="text-sm px-4 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
+          <button id="m-save"   class="text-sm px-5 py-2 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white font-semibold shadow-lift hover:shadow-card transition-all">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ initialTasks: tasks, projectsList: projects, projectColors, clientConfig, MSG: MESSAGES }}>
+    // ── Status ────────────────────────────────────────────────────────
+    let tasks = initialTasks;
+    // Filtros se persisten en localStorage para no perder el contexto al
+    // recargar (F5 / Syncthing reload / restart del server). Se cargan acá
+    // y se reescriben en updateClearBtn(), que ya se llama después de cada
+    // mutación de filters.
+    const FILTERS_KEY = 'tareas-ui:filters:v1';
+    function loadFilters() {
+      const fallback = { search: '', project: '', priority: '', due: '', status: '' };
+      try {
+        const raw = localStorage.getItem(FILTERS_KEY);
+        if (!raw) return fallback;
+        const parsed = JSON.parse(raw);
+        return {
+          search:   typeof parsed.search   === 'string' ? parsed.search   : '',
+          project:  typeof parsed.project  === 'string' ? parsed.project  : '',
+          priority: typeof parsed.priority === 'string' ? parsed.priority : '',
+          due:      typeof parsed.due      === 'string' ? parsed.due      : '',
+          status:   typeof parsed.status   === 'string' ? parsed.status   : '',
+        };
+      } catch { return fallback; }
+    }
+    function persistFilters() {
+      try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters)); } catch {}
+    }
+    let filters = loadFilters();
+    let modalFile = null;
+    // Status del toggle "ver hechas anteriores" — default false (solo hoy).
+    // Persiste aparte de filters porque no es un filtro de la cuadrícula sino
+    // una vista específica del bucket "Hechas".
+    const DONE_SHOW_ALL_KEY = 'tareas-ui:done:showAll';
+    let doneShowAll = (function() {
+      try { return localStorage.getItem(DONE_SHOW_ALL_KEY) === '1'; } catch { return false; }
+    })();
+    function persistDoneShowAll() {
+      try { localStorage.setItem(DONE_SHOW_ALL_KEY, doneShowAll ? '1' : '0'); } catch {}
+    }
+
+    // Configuración de columnas: cada una tiene un acento de color que tinta
+    // sutilmente el fondo (más oscuro que la página) y un dot indicador.
+    const COLUMNS = [
+      { key: 'pending', label: MSG.columns.pending,
+        bg: 'bg-slate-100/70 dark:bg-slate-800/40', dot: 'bg-slate-400 dark:bg-slate-500',
+        countBg: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' },
+      { key: 'doing',   label: MSG.columns.doing,
+        bg: 'bg-indigo-100/60 dark:bg-indigo-900/20', dot: 'bg-indigo-500',
+        countBg: 'bg-indigo-200 text-indigo-800 dark:bg-indigo-800/60 dark:text-indigo-200' },
+      { key: 'blocked', label: MSG.columns.blocked,
+        bg: 'bg-rose-100/60 dark:bg-rose-900/20', dot: 'bg-rose-500',
+        countBg: 'bg-rose-200 text-rose-800 dark:bg-rose-800/60 dark:text-rose-200' },
+      { key: 'done',    label: MSG.columns.done,
+        bg: 'bg-emerald-100/60 dark:bg-emerald-900/20', dot: 'bg-emerald-500',
+        countBg: 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800/60 dark:text-emerald-200' },
+    ];
+
+    // Priority: dot pequeño + accent vertical
+    const PRIO = {
+      critical: { label: MSG.priority.critical, dotCls: 'bg-rose-500',    accentCls: 'bg-rose-500',    text: 'text-rose-700 dark:text-rose-400',    chip: 'bg-rose-50 dark:bg-rose-900/40 text-rose-700 dark:text-rose-200 ring-rose-200 dark:ring-rose-700' },
+      high:     { label: MSG.priority.high,     dotCls: 'bg-orange-500',  accentCls: 'bg-orange-500',  text: 'text-orange-700 dark:text-orange-400',  chip: 'bg-orange-50 dark:bg-orange-900/40 text-orange-700 dark:text-orange-200 ring-orange-200 dark:ring-orange-700' },
+      normal:   { label: MSG.priority.normal,   dotCls: 'bg-sky-400',     accentCls: 'bg-slate-200 dark:bg-slate-600',   text: 'text-slate-600 dark:text-slate-300',   chip: 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 ring-slate-200 dark:ring-slate-700' },
+      low:      { label: MSG.priority.low,      dotCls: 'bg-slate-300 dark:bg-slate-600',   accentCls: 'bg-slate-200 dark:bg-slate-700',   text: 'text-slate-500 dark:text-slate-400',   chip: 'bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 ring-slate-200 dark:ring-slate-700' },
+    };
+
+    // Banner de color en el tope de la card (estilo Trello). Tonos elegidos
+    // para que se distingan en light y dark sin dominar la card.
+    const COLOR_META = {
+      yellow: { label: 'Yellow', banner: 'bg-amber-300 dark:bg-amber-500',     swatch: 'bg-amber-300' },
+      green:  { label: 'Green',    banner: 'bg-emerald-400 dark:bg-emerald-500', swatch: 'bg-emerald-400' },
+      blue:   { label: 'Blue',     banner: 'bg-sky-400 dark:bg-sky-500',         swatch: 'bg-sky-400' },
+      purple: { label: 'Purple',   banner: 'bg-violet-400 dark:bg-violet-500',   swatch: 'bg-violet-400' },
+      pink:   { label: 'Pink',     banner: 'bg-pink-400 dark:bg-pink-500',       swatch: 'bg-pink-400' },
+      gray:   { label: 'Gray',     banner: 'bg-slate-400 dark:bg-slate-500',     swatch: 'bg-slate-400' },
+    };
+    const COLOR_KEYS = ['yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
+
+    const STATUS_META = {
+      pending:          { label: MSG.status.pending,        bg: 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200',         active: 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900' },
+      doing:            { label: MSG.status.doing,          bg: 'bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300',     active: 'bg-indigo-600 text-white' },
+      'pending-review': { label: MSG.status.pending_review, bg: 'bg-yellow-50 dark:bg-yellow-900/30 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300',   active: 'bg-yellow-500 text-white' },
+      blocked:          { label: MSG.status.blocked,        bg: 'bg-rose-50 dark:bg-rose-900/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300',             active: 'bg-rose-600 text-white' },
+      done:             { label: MSG.status.done,           bg: 'bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300', active: 'bg-emerald-600 text-white' },
+    };
+
+    // ── Helpers ────────────────────────────────────────────────────────
+    function todayLima() {
+      return new Date().toLocaleDateString('en-CA', { timeZone: clientConfig.timezone });
+    }
+    function daysUntil(s) {
+      if (!s) return null;
+      const today = new Date(todayLima() + 'T00:00:00');
+      const [y,m,d] = s.split('-').map(Number);
+      return Math.round((new Date(y, m-1, d).getTime() - today.getTime()) / 86_400_000);
+    }
+    function dueText(d) {
+      if (d == null)  return { txt: MSG.due.no_date,                              cls: 'text-slate-400 dark:text-slate-500' };
+      if (d < 0)      return { txt: MSG.due.overdue_by.replace('{n}', String(-d)),cls: 'text-rose-700 dark:text-rose-400 font-semibold' };
+      if (d === 0)    return { txt: MSG.due.due_today,                            cls: 'text-orange-600 dark:text-orange-400 font-semibold' };
+      if (d === 1)    return { txt: MSG.due.tomorrow,                             cls: 'text-amber-700 dark:text-amber-400 font-semibold' };
+      const inDays = MSG.due.in_days.replace('{n}', String(d));
+      if (d <= 7)     return { txt: inDays, cls: 'text-amber-600 dark:text-amber-400 font-medium' };
+      if (d <= 30)    return { txt: inDays, cls: 'text-slate-600 dark:text-slate-400' };
+      return            { txt: inDays, cls: 'text-slate-400 dark:text-slate-500' };
+    }
+    function projectChip(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+      const palettes = [
+        'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200 ring-violet-200 dark:ring-violet-800',
+        'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 ring-sky-200 dark:ring-sky-800',
+        'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200 ring-emerald-200 dark:ring-emerald-800',
+        'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-200 ring-pink-200 dark:ring-pink-800',
+        'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-200 ring-amber-200 dark:ring-amber-800',
+        'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-200 ring-cyan-200 dark:ring-cyan-800',
+        'bg-fuchsia-100 dark:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-200 ring-fuchsia-200 dark:ring-fuchsia-800',
+        'bg-lime-100 dark:bg-lime-900/40 text-lime-700 dark:text-lime-200 ring-lime-200 dark:ring-lime-800',
+      ];
+      const cls = palettes[h % palettes.length];
+      return `<span class="text-[10px] ${cls} px-1.5 py-0.5 rounded-md font-semibold ring-1 ring-inset truncate max-w-[150px]" title="${esc(name)}">${esc(name)}</span>`;
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    // ── Claude timer ──────────────────────────────────────────────────
+    // Devuelve "ahora" / "Nm" / "Nh" / "Nd" desde un ms epoch. Usado por las
+    // cards en doing+claude_active o pending-review. Se llama tanto al render
+    // como desde un ticker (setInterval) que actualiza el .claude-timer-text
+    // sin tocar el resto del DOM (no queremos reiniciar el video).
+    function formatClaudeTimer(mtime) {
+      const sec = Math.max(0, Math.floor((Date.now() - mtime) / 1000));
+      if (sec < 60) return 'ahora';
+      const min = Math.floor(sec / 60);
+      if (min < 60) return min + 'm';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + 'h';
+      return Math.floor(hr / 24) + 'd';
+    }
+    function refreshClaudeTimers() {
+      document.querySelectorAll('.claude-timer').forEach(el => {
+        const since = Number(el.dataset.since);
+        if (!since) return;
+        const txt = el.querySelector('.claude-timer-text');
+        if (txt) txt.textContent = formatClaudeTimer(since);
+      });
+    }
+    setInterval(refreshClaudeTimers, 15000);
+
+    // ── Toast ──────────────────────────────────────────────────────────
+    function toast(msg, kind) {
+      const c = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const palette = {
+        success: 'bg-emerald-600 text-white',
+        error:   'bg-rose-600 text-white',
+        info:    'bg-slate-800 text-white',
+      };
+      el.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-drag text-sm font-medium animate-slide-up ${palette[kind] ?? palette.info}`;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 200ms'; setTimeout(() => el.remove(), 220); }, 2400);
+    }
+
+    // ── Copy al portapapeles con fallback ─────────────────────────────
+    // navigator.clipboard requires a secure context (HTTPS or localhost).
+    // Over plain HTTP it fails. Fallback: hidden textarea + execCommand('copy'),
+    // which still works on HTTP in all browsers (deprecated but reliable).
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(text); return true; } catch {}
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // ── Prompt para Claude ────────────────────────────────────────────
+    // Devuelve null si la integración con Claude está desactivada en la
+    // config (clientConfig.claudeEnabled === false). El UI usa ese null
+    // para esconder el botón "copiar prompt".
+    function buildClaudePrompt(file, title, project) {
+      if (!clientConfig.claudeEnabled || !clientConfig.apiBaseUrl) return null;
+      const projectPart = project ? ` (project: ${project})` : '';
+      const url = `${clientConfig.apiBaseUrl.replace(/\/$/, '')}/api/tasks?file=${encodeURIComponent(file)}`;
+      return `Work on the task "${title}"${projectPart} from the vault. Start it if you have what you need; if something important is missing, ask first.
+
+Start:   curl -sX PATCH "${url}&op=start"   # mark as in-progress
+Close:   curl -sX PATCH "${url}&op=done"    # 100% done and verified, archive it
+Close:   curl -sX PATCH "${url}&op=review"  # done but needs me (sudo, deploy, decision, review)
+
+If the task was already in "pending-review" and you're picking it back up (revisions, follow-up, etc.), run op=start again first so the board switches the animation from waiting-for-review (yellow) back to active (orange).`;
+    }
+
+    // ── Stats hero (clickeables como filtros) ──────────────────────────
+    // Cada card es toggle. Por hacer/En curso filtran por status (modo focus:
+    // solo esa columna se renderiza). Vencidas/Hoy son atajos a los chips de due.
+    function renderStats() {
+      const pending = tasks.filter(t => t.status === 'pending').length;
+      const doing   = tasks.filter(t => t.status === 'doing').length;
+      const overdue = tasks.filter(t => t.status !== 'done' && (daysUntil(t.due) ?? 999) < 0).length;
+      const dueToday = tasks.filter(t => t.status !== 'done' && daysUntil(t.due) === 0).length;
+
+      const cards = [
+        { label: 'To do', value: pending,  accent: 'bg-slate-400 dark:bg-slate-500', subtle: 'text-slate-500 dark:text-slate-400',  tint: '',
+          action: { kind: 'status', key: 'pending' }, ringActive: 'ring-slate-400 dark:ring-slate-500' },
+        { label: 'In progress',  value: doing,    accent: 'bg-indigo-500', subtle: 'text-indigo-600 dark:text-indigo-400', tint: '',
+          action: { kind: 'status', key: 'doing' },   ringActive: 'ring-indigo-400 dark:ring-indigo-500' },
+        { label: 'Overdue',  value: overdue,  accent: 'bg-rose-500',   subtle: 'text-rose-600 dark:text-rose-400',
+          tint: overdue > 0 ? 'bg-gradient-to-br from-rose-50/40 dark:from-rose-950/30 to-transparent' : '',
+          action: { kind: 'due', key: 'overdue' },    ringActive: 'ring-rose-400 dark:ring-rose-500' },
+        { label: 'Today',       value: dueToday, accent: 'bg-amber-500',  subtle: 'text-amber-600 dark:text-amber-400',
+          tint: dueToday > 0 ? 'bg-gradient-to-br from-amber-50/40 dark:from-amber-950/30 to-transparent' : '',
+          action: { kind: 'due', key: 'today' },      ringActive: 'ring-amber-400 dark:ring-amber-500' },
+      ];
+
+      document.getElementById('stats-hero').innerHTML = cards.map((c, i) => {
+        const isActive = (c.action.kind === 'status' && filters.status === c.action.key) ||
+                         (c.action.kind === 'due'    && filters.due    === c.action.key);
+        const activeCls = isActive
+          ? `ring-2 ${c.ringActive} shadow-lift`
+          : 'ring-0 hover:-translate-y-0.5';
+        return `
+          <button type="button" data-stat-i="${i}"
+            class="text-left relative w-full bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 rounded-2xl px-5 py-4 shadow-soft hover:shadow-card transition-all overflow-hidden ${c.tint} ${activeCls}">
+            <div class="absolute left-0 top-0 bottom-0 w-1 ${c.accent}"></div>
+            <p class="text-[10px] font-bold uppercase tracking-[0.12em] ${c.subtle} flex items-center gap-1.5">
+              ${c.label}
+              ${isActive ? '<span class="text-[9px] font-semibold text-slate-400 dark:text-slate-500 normal-case tracking-normal">· filtering</span>' : ''}
+            </p>
+            <p class="mt-1.5 text-3xl sm:text-[2rem] font-extrabold text-slate-900 dark:text-slate-100 tabular-nums tracking-tight leading-none">${c.value}</p>
+          </button>
+        `;
+      }).join('');
+
+      document.querySelectorAll('[data-stat-i]').forEach(btn => btn.addEventListener('click', () => {
+        const c = cards[+btn.dataset.statI];
+        if (c.action.kind === 'status') {
+          filters.status = filters.status === c.action.key ? '' : c.action.key;
+        } else {
+          filters.due = filters.due === c.action.key ? '' : c.action.key;
+        }
+        renderStats(); renderChips(); renderBoard(); updateClearBtn();
+      }));
+    }
+
+    // ── Filtros tipo Notion (pills + popover) ──────────────────────────
+    // 3 pills: Project / Priority / Due. Click → popover con opciones y
+    // counts contextuales. Pill activo muestra el valor con × para quitarlo.
+    const PRIO_META = {
+      critical: { label: MSG.priority.critical, dotCls: 'bg-rose-500' },
+      high:     { label: MSG.priority.high,     dotCls: 'bg-orange-500' },
+      normal:   { label: MSG.priority.normal,   dotCls: 'bg-sky-400' },
+      low:      { label: MSG.priority.low,      dotCls: 'bg-slate-300 dark:bg-slate-600' },
+    };
+    const DUE_META = {
+      overdue: { label: MSG.stats.overdue },
+      today:   { label: MSG.stats.today },
+      week:    { label: MSG.due.this_week },
+      nodate:  { label: MSG.card.no_due_date_hint },
+    };
+    const FILTER_FIELD = { project: 'project', priority: 'priority', due: 'due' };
+    const FILTER_LABEL = { project: MSG.filters.project, priority: MSG.filters.priority, due: MSG.filters.due };
+
+    function countMatching(predicate) {
+      // Counts contextuales: excluyen done, respetan search/project/status.
+      // No respetan el chip que se está midiendo — cada popover muestra el
+      // universo "qué pasaría si elijo esta opción".
+      let n = 0;
+      for (const t of tasks) {
+        if (t.status === 'done') continue;
+        if (filters.status) {
+          if (filters.status === 'doing') {
+            if (t.status !== 'doing' && t.status !== 'pending-review') continue;
+          } else if (t.status !== filters.status) continue;
+        }
+        if (filters.search) {
+          const q = filters.search.toLowerCase();
+          if (!t.title.toLowerCase().includes(q) && !t.body.toLowerCase().includes(q)) continue;
+        }
+        if (predicate(t)) n++;
+      }
+      return n;
+    }
+
+    function buildPopoverItems(kind) {
+      if (kind === 'priority') {
+        return Object.entries(PRIO_META).map(([key, m]) => ({
+          key, label: m.label, dotCls: m.dotCls,
+          count: countMatching(t => t.priority === key && (!filters.project || t.project === filters.project)),
+        }));
+      }
+      if (kind === 'due') {
+        const pred = {
+          overdue: t => { const d = daysUntil(t.due); return d != null && d < 0; },
+          today:   t => daysUntil(t.due) === 0,
+          week:    t => { const d = daysUntil(t.due); return d != null && d >= 0 && d <= 7; },
+          nodate:  t => !t.due,
+        };
+        return Object.entries(DUE_META).map(([key, m]) => ({
+          key, label: m.label,
+          count: countMatching(t => pred[key](t) && (!filters.project || t.project === filters.project)),
+        }));
+      }
+      // project
+      const stats = new Map();
+      for (const p of projectsList) stats.set(p, { count: 0, hasVenciendo: false });
+      for (const t of tasks) {
+        if (t.status === 'done') continue;
+        if (!t.project) continue;
+        if (!stats.has(t.project)) stats.set(t.project, { count: 0, hasVenciendo: false });
+        const s = stats.get(t.project);
+        s.count++;
+        const dd = daysUntil(t.due);
+        if (dd != null && dd <= 1) s.hasVenciendo = true;
+      }
+      return [...stats.entries()]
+        .map(([name, s]) => ({ key: name, label: name, count: s.count, hasVenciendo: s.hasVenciendo }))
+        .sort((a, b) => {
+          if (a.hasVenciendo !== b.hasVenciendo) return a.hasVenciendo ? -1 : 1;
+          if (a.count !== b.count) return b.count - a.count;
+          return a.label.localeCompare(b.label);
+        });
+    }
+
+    let openPopoverKind = null;
+    function closeFilterPopover() {
+      const ex = document.getElementById('filter-popover');
+      if (ex) ex.remove();
+      openPopoverKind = null;
+      document.removeEventListener('click', onPopoverOutsideClick, true);
+      document.removeEventListener('keydown', onPopoverEscape);
+      window.removeEventListener('scroll', closeFilterPopover, true);
+    }
+    function onPopoverOutsideClick(e) {
+      const pop = document.getElementById('filter-popover');
+      if (!pop) return;
+      if (pop.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('[data-filter-pill]')) return;
+      closeFilterPopover();
+    }
+    function onPopoverEscape(e) { if (e.key === 'Escape') closeFilterPopover(); }
+
+    function openFilterPopover(kind, anchor) {
+      if (openPopoverKind === kind) { closeFilterPopover(); return; }
+      closeFilterPopover();
+      openPopoverKind = kind;
+
+      const field = FILTER_FIELD[kind];
+      const current = filters[field];
+      const items = buildPopoverItems(kind);
+
+      const pop = document.createElement('div');
+      pop.id = 'filter-popover';
+      pop.className = 'fixed z-40 min-w-[200px] max-h-[60vh] overflow-y-auto bg-white dark:bg-slate-800 rounded-xl shadow-drag ring-1 ring-slate-200 dark:ring-slate-700 p-1.5 animate-slide-up scrollbar-thin';
+      const rect = anchor.getBoundingClientRect();
+      pop.style.left = Math.max(8, rect.left) + 'px';
+      pop.style.top = (rect.bottom + 6) + 'px';
+
+      const clearRow = current
+        ? `<button data-pop-clear class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+             Remove filter
+           </button>
+           <div class="h-px bg-slate-100 dark:bg-slate-700 my-1"></div>`
+        : '';
+
+      const rows = items.length === 0
+        ? '<div class="px-2.5 py-3 text-xs text-slate-400 dark:text-slate-500 italic text-center">sin opciones</div>'
+        : items.map(it => {
+            // Opciones con count 0 siguen clickeables (para filtrar y luego añadir
+            // una tarea sobre ese proyecto vacío). Solo se ven más tenues.
+            const empty = it.count === 0 && current !== it.key;
+            const sel = current === it.key;
+            return `<button data-pop-select="${esc(it.key)}"
+              class="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                sel   ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900' :
+                empty ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }">
+              <span class="flex items-center gap-1.5 min-w-0">
+                ${it.dotCls ? `<span class="w-1.5 h-1.5 rounded-full ${it.dotCls} shrink-0 ${empty ? 'opacity-50' : ''}"></span>` : ''}
+                ${it.hasVenciendo ? '<span class="shrink-0">🔴</span>' : ''}
+                <span class="truncate">${esc(it.label)}</span>
+              </span>
+              <span class="tabular-nums text-[10px] ${sel ? 'opacity-70' : 'opacity-50'} shrink-0">${it.count}</span>
+            </button>`;
+          }).join('');
+
+      pop.innerHTML = clearRow + rows;
+      document.body.appendChild(pop);
+
+      // Reposiciona si se sale por la derecha
+      const popRect = pop.getBoundingClientRect();
+      if (popRect.right > window.innerWidth - 8) {
+        pop.style.left = Math.max(8, window.innerWidth - popRect.width - 8) + 'px';
+      }
+
+      pop.querySelectorAll('[data-pop-select]').forEach(b => b.addEventListener('click', () => {
+        const k = b.dataset.popSelect;
+        filters[field] = filters[field] === k ? '' : k;
+        closeFilterPopover();
+        renderStats(); renderChips(); renderBoard(); updateClearBtn();
+      }));
+      const clearBtn = pop.querySelector('[data-pop-clear]');
+      if (clearBtn) clearBtn.addEventListener('click', () => {
+        filters[field] = '';
+        closeFilterPopover();
+        renderStats(); renderChips(); renderBoard(); updateClearBtn();
+      });
+
+      setTimeout(() => {
+        document.addEventListener('click', onPopoverOutsideClick, true);
+        document.addEventListener('keydown', onPopoverEscape);
+        window.addEventListener('scroll', closeFilterPopover, true);
+      }, 0);
+    }
+
+    function pillHTML(kind) {
+      const field = FILTER_FIELD[kind];
+      const current = filters[field];
+      const chevron = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-60 shrink-0"><polyline points="6 9 12 15 18 9"/></svg>';
+
+      if (!current) {
+        return `<button data-filter-pill="${kind}"
+          class="text-xs px-2.5 py-2 rounded-lg font-medium ring-1 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:ring-slate-300 dark:hover:ring-slate-600 transition-all flex items-center gap-1.5">
+          <span class="opacity-50">+</span>${FILTER_LABEL[kind]}${chevron}
+        </button>`;
+      }
+      let leadDot = '';
+      let valueLabel = current;
+      if (kind === 'priority') {
+        const m = PRIO_META[current];
+        leadDot = `<span class="w-1.5 h-1.5 rounded-full ${m.dotCls} shrink-0"></span>`;
+        valueLabel = m.label;
+      } else if (kind === 'due') {
+        valueLabel = DUE_META[current]?.label ?? current;
+      }
+      return `<button data-filter-pill="${kind}"
+        class="text-xs pl-2.5 pr-1 py-2 rounded-lg font-semibold ring-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 ring-slate-900 dark:ring-slate-100 shadow-lift transition-all flex items-center gap-1.5 max-w-[220px]">
+        <span class="text-[10px] uppercase tracking-wider opacity-60 shrink-0">${FILTER_LABEL[kind]}:</span>
+        ${leadDot}
+        <span class="truncate">${esc(valueLabel)}</span>
+        <span data-pill-clear title="Remove filter" class="ml-0.5 w-5 h-5 flex items-center justify-center rounded hover:bg-white/20 dark:hover:bg-black/20 transition-colors text-base leading-none shrink-0">×</span>
+      </button>`;
+    }
+
+    function renderChips() {
+      const c = document.getElementById('chip-filters');
+      c.innerHTML = pillHTML('project') + pillHTML('priority') + pillHTML('due');
+      c.querySelectorAll('[data-filter-pill]').forEach(p => p.addEventListener('click', (e) => {
+        const kind = p.dataset.filterPill;
+        if (e.target.closest('[data-pill-clear]')) {
+          e.stopPropagation();
+          filters[FILTER_FIELD[kind]] = '';
+          closeFilterPopover();
+          renderStats(); renderChips(); renderBoard(); updateClearBtn();
+          return;
+        }
+        openFilterPopover(kind, p);
+      }));
+    }
+    function updateClearBtn() {
+      const any = filters.search || filters.project || filters.priority || filters.due || filters.status;
+      document.getElementById('clear-filters').classList.toggle('hidden', !any);
+      persistFilters();
+    }
+
+    function passes(t) {
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        if (!t.title.toLowerCase().includes(q) && !t.body.toLowerCase().includes(q)) return false;
+      }
+      if (filters.project  && t.project  !== filters.project)  return false;
+      if (filters.priority && t.priority !== filters.priority) return false;
+      if (filters.status) {
+        // 'pending-review' vive visualmente dentro de la columna 'doing', así
+        // que el filtro de "En curso" también la incluye.
+        if (filters.status === 'doing') {
+          if (t.status !== 'doing' && t.status !== 'pending-review') return false;
+        } else if (t.status !== filters.status) return false;
+      }
+      if (filters.due) {
+        const d = daysUntil(t.due);
+        if (filters.due === 'overdue' && !(d != null && d < 0)) return false;
+        if (filters.due === 'today'   && d !== 0)               return false;
+        if (filters.due === 'week'    && !(d != null && d >= 0 && d <= 7)) return false;
+        if (filters.due === 'nodate'  && t.due)                 return false;
+      }
+      return true;
+    }
+
+    // ── Card ──────────────────────────────────────────────────────────
+    function renderCard(t) {
+      const prio = PRIO[t.priority] ?? PRIO.normal;
+      const d    = dueText(daysUntil(t.due));
+      const subs = t.subtasks ?? [];
+      const subDone = subs.filter(s => s.done).length;
+      // ProgressBar va en una sección aparte (debajo del wrapper con el video),
+      // así el video se queda confinado al área de arriba y el border-t
+      // separador queda nítido sin la animación detrás.
+      const progressBar = subs.length > 1 ? `
+        <div class="px-3.5 pb-3 pt-2.5 border-t border-slate-100 dark:border-slate-700">
+          <div class="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+            <div class="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all" style="width: ${(subDone / subs.length) * 100}%"></div>
+            </div>
+            <span class="tabular-nums font-semibold">${subDone}/${subs.length}</span>
+          </div>
+        </div>` : '';
+      const blockedNote = t.blocked_by && t.status === 'blocked'
+        ? `<div class="mt-2 text-[10.5px] text-rose-700 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-900/30 px-2 py-1.5 rounded-md ring-1 ring-rose-100 dark:ring-rose-800 line-clamp-2">⚠️ ${esc(t.blocked_by)}</div>`
+        : '';
+      const prioDot = (t.priority === 'critical' || t.priority === 'high')
+        ? `<span class="w-1.5 h-1.5 rounded-full ${prio.dotCls}"></span>` : '';
+
+      // Chip de vencimiento: solo si hay due date. Antes mostraba "no date"
+      // que era ruido visual permanente para tareas sin deadline.
+      const isReview = t.status === 'pending-review';
+      const showTimer = t.claude_active || isReview;
+      const dueChip = t.due
+        ? `<span class="text-[10.5px] ${d.cls} ${showTimer ? '' : 'ml-auto'} whitespace-nowrap">${d.txt}</span>`
+        : '';
+      // Timer Claude: cuenta minutos/horas desde el último write del archivo
+      // (proxy razonable: op=start y op=done escriben el .md, drag-reorder
+      // también — caveat documentado). Se actualiza in-place vía ticker sin
+      // re-renderizar la card para no reiniciar la animación del video.
+      const claudeTimer = showTimer ? `
+        <span class="claude-timer text-[10.5px] font-semibold ${isReview ? 'text-yellow-700 dark:text-yellow-300' : 'text-orange-700 dark:text-orange-300'} ml-auto whitespace-nowrap inline-flex items-center gap-1"
+              data-since="${t.mtime}" data-kind="${isReview ? 'review' : 'work'}"
+              title="${isReview ? 'In review since' : 'Working desde'} ${new Date(t.mtime).toLocaleString(undefined, { timeZone: clientConfig.timezone, hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="claude-timer-text">${formatClaudeTimer(t.mtime)}</span>
+        </span>` : '';
+      const cornerControls = `
+        <div class="absolute top-1.5 right-1.5 flex items-center gap-1.5">
+          ${prioDot}
+          <button type="button" data-color-btn title="Change color" draggable="false"
+            class="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center rounded-md transition-all">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/>
+              <path d="M12 22a10 10 0 1 1 0-20c5.523 0 10 4.477 10 10 0 2.5-2 2.5-2 5 0 1.5 1 2.5-2 2.5-2 0-2-1-3-1-1 0-1 1-3 1z"/>
+            </svg>
+          </button>
+          ${clientConfig.claudeEnabled ? `<button type="button" data-copy-btn title="Copy prompt for Claude" draggable="false"
+            class="opacity-50 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center rounded-md transition-all">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>` : ''}
+        </div>
+      `;
+      // Indicador visual de actividad de Claude — dos estados con video propio:
+      //   doing + claude_active → claude-doing.webm (mascota currando)   + pulso naranja
+      //   pending-review        → claude-working.webm (celebración)      + pulso amarillo
+      // Ambos webm están renderizados a 400×306 con alpha real (VP9 yuva420p)
+      // para que tengan exactamente el mismo tamaño visual. claude-doing se
+      // generó con ffmpeg `colorkey=#F4F4F4` sobre el mp4 original que venía
+      // con fondo blanco sólido, scale+pad transparente a 400×306.
+      // Posicionado absolute top-right con altura fija (`h-[108px]`) — así el
+      // bichito no crece cuando la card crece (progressbar/blockedNote/title
+      // de 3 líneas), siempre el mismo tamaño relativo en cualquier card.
+      let claudeVideo = '';
+      let claudeRing  = '';
+      const claudeVideoCls = 'absolute top-0 right-0 h-[108px] object-contain object-right opacity-80 pointer-events-none select-none';
+      if (t.status === 'pending-review') {
+        claudeVideo = `<video src="/claude-working.webm" autoplay loop muted playsinline
+                              class="${claudeVideoCls}"
+                              aria-label="Claude finished — esperando revisión"></video>`;
+        claudeRing = 'claude-review-card';
+      } else if (t.claude_active) {
+        claudeVideo = `<video src="/claude-doing.webm" autoplay loop muted playsinline
+                              class="${claudeVideoCls}"
+                              aria-label="Claude está trabajando"></video>`;
+        claudeRing = 'claude-active-card';
+      }
+      const claudeBadge = '';
+
+      // Color efectivo: el de la tarea gana; si no hay, hereda el del proyecto.
+      const effectiveColor = t.color ?? (t.project ? projectColors[t.project] : null) ?? null;
+      const colorMeta = effectiveColor ? COLOR_META[effectiveColor] : null;
+      const inherited = colorMeta && !t.color;
+      const colorBanner = colorMeta
+        ? `<div class="h-2 ${colorMeta.banner}" title="${inherited ? `Color inherited from project: ${colorMeta.label}` : `Color: ${colorMeta.label}`}"></div>`
+        : '';
+      // Cuando hay banner, baja un poco el padding superior del contenido
+      // y baja también los corner controls para que no choquen con el banner.
+      const contentTop = colorMeta ? 'pt-2.5' : 'py-3';
+      const cornerTop = colorMeta ? 'top-3' : 'top-1.5';
+
+      // El video va como overlay absoluto del article (NO de un wrapper) —
+      // así no reserva espacio en el layout y nunca empuja el contenido. Es
+      // una "máscara" visual: si la card es más alta que el video, el video
+      // queda en la esquina arriba a la derecha; si es más baja, el video se
+      // clipa con el overflow-hidden del article. Ambos webm están a 480×250
+      // (mismo canvas exacto, mismo procesamiento de chromakey) así que tienen
+      // tamaño visual idéntico al renderear con h-[108px].
+      const upperPadBottom = progressBar ? '' : (colorMeta ? 'pb-3' : '');
+      return `
+        <article
+          draggable="true"
+          data-task-file="${esc(t.file)}"
+          class="group relative bg-white dark:bg-slate-800 rounded-xl shadow-card hover:shadow-lift hover:-translate-y-0.5 hover:ring-1 hover:ring-brand-200 dark:hover:ring-brand-700 transition-all cursor-grab active:cursor-grabbing overflow-hidden animate-pop ${claudeRing}"
+        >
+          ${claudeVideo}
+          ${colorBanner}
+          <div class="relative">
+            <div class="absolute left-0 top-0 bottom-0 w-[3px] ${prio.accentCls}"></div>
+            <div class="relative pl-3.5 pr-3 ${contentTop} ${upperPadBottom}">
+              ${cornerControls.replace('top-1.5', cornerTop)}
+              <h3 class="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100 leading-snug line-clamp-3 tracking-tight pr-9"><span class="${t.status === 'done' ? 'line-through' : ''}">${esc(t.title)}</span></h3>
+              <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                ${claudeBadge}
+                ${t.project ? projectChip(t.project) : ''}
+                ${dueChip}
+                ${claudeTimer}
+              </div>
+              ${blockedNote}
+            </div>
+          </div>
+          ${progressBar}
+        </article>
+      `;
+    }
+
+    // ── Board ─────────────────────────────────────────────────────────
+    // Orden dentro de columna: `pos` DESC NULLS LAST, luego due ASC NULLS LAST,
+    // luego priority (critical → low), finalmente mtime DESC.
+    function sortColumnItems(items) {
+      const PR = { critical: 0, high: 1, normal: 2, low: 3 };
+      return items.slice().sort((a, b) => {
+        if (a.pos != null || b.pos != null) {
+          if (a.pos == null) return 1;
+          if (b.pos == null) return -1;
+          return b.pos - a.pos;
+        }
+        const da = daysUntil(a.due), db = daysUntil(b.due);
+        if (da == null && db != null) return 1;
+        if (db == null && da != null) return -1;
+        if (da != null && db != null && da !== db) return da - db;
+        const pa = PR[a.priority] ?? 2, pb = PR[b.priority] ?? 2;
+        if (pa !== pb) return pa - pb;
+        return (b.mtime ?? 0) - (a.mtime ?? 0);
+      });
+    }
+
+    function renderBoard() {
+      const board = document.getElementById('board');
+      const filtered = tasks.filter(passes);
+      // Modo focus: si hay filtro de status (desde card hero) renderiza solo esa columna
+      // a ancho completo. Si no, grid de 4.
+      const visibleColumns = filters.status ? COLUMNS.filter(c => c.key === filters.status) : COLUMNS;
+      board.className = visibleColumns.length === 1
+        ? 'grid grid-cols-1 gap-4 sm:gap-5 max-w-2xl mx-auto'
+        : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5';
+      // Inicio del día de hoy en Lima (ms epoch). Las tareas done con mtime >=
+      // este timestamp se consideran "terminadas hoy". El resto va detrás del
+      // toggle. mtime se actualiza al mover a done/ (writeFileSync) — proxy
+      // razonable para "fecha de cierre". Caveat: if you edit the body of
+      // una tarea ya en done/, mtime se actualiza y vuelve a "hoy" — aceptable
+      // porque es raro tocar tareas archivadas.
+      const todayStartMs = new Date(todayLima() + 'T00:00:00').getTime();
+
+      board.innerHTML = visibleColumns.map(c => {
+        let items = sortColumnItems(filtered.filter(t => t.status === c.key));
+        // Columna "Hechas": por default oculta las anteriores a hoy. Cuenta
+        // cuántas hay escondidas para mostrarlas en el toggle.
+        let hiddenDoneCount = 0;
+        if (c.key === 'done' && !doneShowAll) {
+          const beforeFilter = items.length;
+          items = items.filter(t => (t.mtime ?? 0) >= todayStartMs);
+          hiddenDoneCount = beforeFilter - items.length;
+        }
+        const cards = items.length
+          ? items.map(renderCard).join('')
+          : `<div class="text-center py-10 text-slate-400 dark:text-slate-600 text-xs italic select-none">${MSG.card.nothing_here}</div>`;
+        const doneToggle = c.key === 'done' ? `
+          <button data-done-toggle type="button"
+            class="text-[10.5px] font-medium text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 px-2 py-1 rounded-md hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30 transition-colors flex items-center gap-1"
+            title="${doneShowAll ? 'Mostrar solo las terminadas hoy' : 'Mostrar también las terminadas en días anteriores'}">
+            ${doneShowAll
+              ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Solo hoy'
+              : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>Ver anteriores' + (hiddenDoneCount > 0 ? ` <span class="text-[9.5px] opacity-75">(${hiddenDoneCount})</span>` : '')
+            }
+          </button>` : '';
+
+        // Sub-sección "Pending review" arriba de la columna 'In progress': muestra
+        // las tareas en pending-review (las que Claude finished y esperan que
+        // las marque como done a mano). Dropzone propia → drag dentro setea
+        // status='pending-review'. Solo se renderiza si hay items.
+        let reviewSubsection = '';
+        if (c.key === 'doing') {
+          const reviewItems = sortColumnItems(filtered.filter(t => t.status === 'pending-review'));
+          if (reviewItems.length) {
+            reviewSubsection = `
+              <div class="mb-3 rounded-lg bg-yellow-50/80 dark:bg-yellow-900/20 ring-1 ring-yellow-200/70 dark:ring-yellow-700/40 p-2">
+                <div class="flex items-center gap-2 px-1.5 mb-2">
+                  <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                  <h3 class="font-semibold text-[10.5px] text-yellow-700 dark:text-yellow-300 tracking-wider uppercase">Pending review</h3>
+                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums bg-yellow-200 text-yellow-800 dark:bg-yellow-800/60 dark:text-yellow-200">${reviewItems.length}</span>
+                </div>
+                <div data-dropzone="pending-review" class="flex flex-col gap-2.5 min-h-[60px] rounded-md transition-all relative">
+                  ${reviewItems.map(renderCard).join('')}
+                </div>
+              </div>`;
+          }
+        }
+
+        return `
+          <section data-column="${c.key}" class="rounded-2xl ${c.bg} backdrop-blur-sm ring-1 ring-white dark:ring-slate-700/50 p-3 flex flex-col min-h-[260px] animate-slide-up">
+            <header class="flex items-center justify-between gap-2 px-1.5 mb-3">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full ${c.dot}"></span>
+                <h2 class="font-semibold text-[12px] text-slate-700 dark:text-slate-300 tracking-wider uppercase">${c.label}</h2>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums ${c.countBg}">${items.length}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                ${doneToggle}
+                <button data-add-to="${c.key}" title="Add task en esta columna"
+                  class="text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-white/70 dark:hover:bg-slate-700/60 w-6 h-6 flex items-center justify-center rounded-md transition-colors text-lg leading-none font-bold">+</button>
+              </div>
+            </header>
+            ${reviewSubsection}
+            <div data-dropzone="${c.key}" class="flex-1 flex flex-col gap-2.5 min-h-[80px] rounded-lg transition-all relative">
+              ${cards}
+            </div>
+          </section>
+        `;
+      }).join('');
+      wireCards();
+      document.querySelectorAll('[data-add-to]').forEach(b => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openModal(null, { status: b.dataset.addTo });
+      }));
+      document.querySelectorAll('[data-done-toggle]').forEach(b => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        doneShowAll = !doneShowAll;
+        persistDoneShowAll();
+        renderBoard();
+      }));
+    }
+
+    // ── DnD: mover entre columnas + reorder vertical con indicador ────
+    let draggedFile = null;
+
+    function clearIndicators() {
+      document.querySelectorAll('.drop-indicator').forEach(el => el.remove());
+      document.querySelectorAll('[data-dropzone]').forEach(z => {
+        z.classList.remove('drop-target-empty');
+      });
+    }
+
+    function showIndicator(zone, afterCard) {
+      clearIndicators();
+      const ind = document.createElement('div');
+      ind.className = 'drop-indicator h-1 bg-brand-500 rounded-full mx-1 shadow-[0_0_10px_rgba(99,102,241,0.5)] animate-pulse';
+      if (afterCard) {
+        afterCard.insertAdjacentElement('afterend', ind);
+      } else {
+        // Sin afterCard: insertar al principio
+        const first = zone.querySelector('[data-task-file]');
+        if (first) zone.insertBefore(ind, first);
+        else zone.classList.add('drop-target-empty');
+      }
+    }
+
+    function computeAfterCard(zone, clientY) {
+      const cards = [...zone.querySelectorAll('[data-task-file]:not(.dragging)')];
+      let after = null;
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (clientY > mid) after = card;
+        else break;
+      }
+      return after;
+    }
+
+    async function persistColumnOrder(column) {
+      const zone = document.querySelector(`[data-dropzone="${column}"]`);
+      if (!zone) return;
+      const files = [...zone.querySelectorAll('[data-task-file]')].map(el => el.dataset.taskFile);
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'reorder', files }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        // Update local tasks pos values from server response
+        for (const updated of (data.updated ?? [])) {
+          const i = tasks.findIndex(t => t.file === updated.file);
+          if (i !== -1) tasks[i] = updated;
+        }
+      } catch (e) {
+        toast(MSG.modal.save_order_failed.replace('{err}', e.message), 'error');
+      }
+    }
+
+    // ── Popover de color sobre la card ────────────────────────────────
+    // Misma idea que el popover de filtros: se abre anclado al botón,
+    // hace PATCH inmediato y cierra. Update optimista local para que el
+    // banner aparezca/desaparezca sin esperar el polling.
+    let openColorPopoverFile = null;
+    function closeColorPopover() {
+      const ex = document.getElementById('color-popover');
+      if (ex) ex.remove();
+      openColorPopoverFile = null;
+      document.removeEventListener('click', onColorPopoverOutside, true);
+      document.removeEventListener('keydown', onColorPopoverEscape);
+      window.removeEventListener('scroll', closeColorPopover, true);
+    }
+    function onColorPopoverOutside(e) {
+      const pop = document.getElementById('color-popover');
+      if (!pop) return;
+      if (pop.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('[data-color-btn]')) return;
+      closeColorPopover();
+    }
+    function onColorPopoverEscape(e) { if (e.key === 'Escape') closeColorPopover(); }
+
+    function openCardColorPopover(file, anchor) {
+      if (openColorPopoverFile === file) { closeColorPopover(); return; }
+      closeColorPopover();
+      openColorPopoverFile = file;
+
+      const current = tasks.find(t => t.file === file);
+      const currentColor = current?.color ?? null;
+      const projectColor = current?.project ? (projectColors[current.project] ?? null) : null;
+
+      const pop = document.createElement('div');
+      pop.id = 'color-popover';
+      pop.className = 'fixed z-40 bg-white dark:bg-slate-800 rounded-xl shadow-drag ring-1 ring-slate-200 dark:ring-slate-700 p-2 animate-slide-up';
+      const rect = anchor.getBoundingClientRect();
+      pop.style.left = Math.max(8, rect.left - 4) + 'px';
+      pop.style.top = (rect.bottom + 6) + 'px';
+
+      const noColorTitle = projectColor ? `No custom color · inherits ${COLOR_META[projectColor].label.toLowerCase()} from project` : 'No color';
+      const noColor = `<button data-set-card-color="" title="${noColorTitle}"
+        class="w-7 h-7 rounded-full bg-white dark:bg-slate-700 ring-1 ring-slate-300 dark:ring-slate-600 hover:ring-2 hover:ring-slate-500 transition-all flex items-center justify-center ${currentColor == null ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="text-slate-400 dark:text-slate-500">
+          <line x1="5" y1="19" x2="19" y2="5"/>
+        </svg>
+      </button>`;
+      const swatches = COLOR_KEYS.map(k => {
+        const meta = COLOR_META[k];
+        const active = currentColor === k;
+        return `<button data-set-card-color="${k}" title="${meta.label}"
+          class="w-7 h-7 rounded-full ${meta.swatch} ring-1 ring-black/10 dark:ring-white/10 hover:ring-2 hover:ring-slate-500 transition-all ${active ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}"></button>`;
+      }).join('');
+
+      const hint = currentColor == null && projectColor
+        ? `<p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full ${COLOR_META[projectColor].swatch}"></span>Inherited from project</p>`
+        : '';
+      pop.innerHTML = `<div class="flex flex-wrap gap-1.5 max-w-[180px]">${noColor}${swatches}</div>${hint}`;
+      document.body.appendChild(pop);
+
+      const popRect = pop.getBoundingClientRect();
+      if (popRect.right > window.innerWidth - 8) {
+        pop.style.left = Math.max(8, window.innerWidth - popRect.width - 8) + 'px';
+      }
+
+      pop.querySelectorAll('[data-set-card-color]').forEach(b => b.addEventListener('click', async () => {
+        const newColor = b.dataset.setCardColor || null;
+        closeColorPopover();
+        const t = tasks.find(x => x.file === file);
+        if (!t) return;
+        const prev = t.color;
+        t.color = newColor; // optimistic
+        renderBoard();
+        try {
+          const res = await fetch(`/api/tasks?file=${encodeURIComponent(file)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ color: newColor }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const updated = await res.json();
+          const i = tasks.findIndex(x => x.file === file);
+          if (i !== -1) tasks[i] = updated;
+          renderBoard();
+        } catch (e) {
+          t.color = prev; // rollback
+          renderBoard();
+          toast('Could not save color: ' + e.message, 'error');
+        }
+      }));
+
+      setTimeout(() => {
+        document.addEventListener('click', onColorPopoverOutside, true);
+        document.addEventListener('keydown', onColorPopoverEscape);
+        window.addEventListener('scroll', closeColorPopover, true);
+      }, 0);
+    }
+
+    function wireCards() {
+      document.querySelectorAll('[data-task-file]').forEach(card => {
+        const file = card.dataset.taskFile;
+        let didDrag = false;
+        const copyBtn = card.querySelector('[data-copy-btn]');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const t = tasks.find(x => x.file === file);
+            if (!t) return;
+            const prompt = buildClaudePrompt(t.file, t.title, t.project);
+            if (!prompt) return;
+            const ok = await copyText(prompt);
+            toast(ok ? MSG.modal.prompt_copied : MSG.modal.copy_failed, ok ? 'success' : 'error');
+          });
+        }
+        const colorBtn = card.querySelector('[data-color-btn]');
+        if (colorBtn) {
+          colorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCardColorPopover(file, colorBtn);
+          });
+        }
+        card.addEventListener('click', () => { if (!didDrag) openModal(file); });
+        card.addEventListener('dragstart', (e) => {
+          if (e.target.closest && (e.target.closest('[data-copy-btn]') || e.target.closest('[data-color-btn]'))) {
+            e.preventDefault();
+            return;
+          }
+          draggedFile = file;
+          didDrag = false;
+          setTimeout(() => card.classList.add('dragging'), 0);
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', file); } catch {}
+        });
+        card.addEventListener('drag', () => { didDrag = true; });
+        card.addEventListener('dragend', () => {
+          card.classList.remove('dragging');
+          draggedFile = null;
+          clearIndicators();
+          setTimeout(() => { didDrag = false; }, 50);
+        });
+      });
+
+      document.querySelectorAll('[data-dropzone]').forEach(zone => {
+        zone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const after = computeAfterCard(zone, e.clientY);
+          showIndicator(zone, after);
+        });
+        zone.addEventListener('dragleave', (e) => {
+          // Solo limpiar si realmente salimos del zone (no si entramos a un child)
+          if (!zone.contains(e.relatedTarget)) {
+            zone.classList.remove('drop-target-empty');
+          }
+        });
+        zone.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          const file = draggedFile;
+          clearIndicators();
+          if (!file) return;
+          const targetColumn = zone.dataset.dropzone;
+          const after = computeAfterCard(zone, e.clientY);
+          const draggedTask = tasks.find(t => t.file === file);
+          if (!draggedTask) return;
+
+          // Determinar destinos arriba/abajo según `after`
+          const filtered = tasks.filter(passes);
+          const colItems = sortColumnItems(filtered.filter(t => t.status === targetColumn && t.file !== file));
+          let insertIdx;
+          if (!after) insertIdx = 0;
+          else {
+            const idx = colItems.findIndex(t => t.file === after.dataset.taskFile);
+            insertIdx = idx + 1;
+          }
+
+          // Si cambia de columna: primero mover (status), luego pos.
+          const movedColumn = draggedTask.status !== targetColumn;
+
+          // Asignar pos: entre el vecino superior e inferior si existen
+          const above = colItems[insertIdx - 1];
+          const below = colItems[insertIdx];
+          let newPos;
+          if (above && below) {
+            if (above.pos != null && below.pos != null) newPos = (above.pos + below.pos) / 2;
+            else newPos = Date.now(); // fallback: forzaremos reorder full después
+          } else if (!above && below) {
+            newPos = (below.pos ?? 0) + 100;
+          } else if (above && !below) {
+            newPos = (above.pos ?? 0) - 100;
+          } else {
+            newPos = 100;
+          }
+
+          // Optimistic update local
+          draggedTask.status = targetColumn;
+          draggedTask.pos = newPos;
+          renderStats();
+          renderChips();
+          renderBoard();
+
+          try {
+            if (movedColumn) {
+              const res1 = await fetch(`/api/tasks?file=${encodeURIComponent(file)}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ op: 'move', status: targetColumn }),
+              });
+              if (!res1.ok) throw new Error(await res1.text());
+            }
+            // Save nuevo orden de toda la columna (limpia pos colisiones)
+            await persistColumnOrder(targetColumn);
+            renderBoard();
+            if (movedColumn) toast(MSG.modal.moved_to.replace('{label}', STATUS_META[targetColumn].label.toLowerCase()), 'success');
+          } catch (err) {
+            toast('Error: ' + err.message, 'error');
+            await reloadTasks();
+          }
+        });
+      });
+    }
+
+    // ── Modal ─────────────────────────────────────────────────────────
+    const modal = document.getElementById('modal');
+    const mTitle      = document.getElementById('m-title');
+    const mFile       = document.getElementById('m-file');
+    const mDue        = document.getElementById('m-due');
+    const mDueHint    = document.getElementById('m-due-hint');
+    const mProject    = document.getElementById('m-project');
+    const mBlockedBy  = document.getElementById('m-blocked-by');
+    const mBody       = document.getElementById('m-body');
+    const mPreview    = document.getElementById('m-preview');
+    const mDelete     = document.getElementById('m-delete');
+    const mCopyPrompt = document.getElementById('m-copy-prompt');
+    let mStatus = 'pending';
+    let mPriority = 'normal';
+    let mColor = null; // null = sin color
+
+    function renderStatusPills() {
+      document.getElementById('m-status-pills').innerHTML = ['pending','doing','pending-review','blocked','done'].map(s => {
+        const meta = STATUS_META[s];
+        const isActive = mStatus === s;
+        return `<button type="button" data-set-status="${s}"
+                   class="text-xs px-2.5 py-2 rounded-lg font-semibold transition-all ${isActive ? meta.active + ' shadow-lift' : meta.bg}">
+                   ${meta.label}
+                 </button>`;
+      }).join('');
+      document.querySelectorAll('[data-set-status]').forEach(b => b.addEventListener('click', () => {
+        mStatus = b.dataset.setStatus;
+        renderStatusPills();
+      }));
+    }
+    function renderPriorityPills() {
+      document.getElementById('m-priority-pills').innerHTML = ['critical','high','normal','low'].map(p => {
+        const meta = PRIO[p];
+        const isActive = mPriority === p;
+        return `<button type="button" data-set-prio="${p}"
+                   class="text-xs px-2.5 py-2 rounded-lg font-semibold ring-1 transition-all flex items-center justify-center gap-1.5 ${isActive ? meta.chip + ' ring-2' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}">
+                   <span class="w-1.5 h-1.5 rounded-full ${meta.dotCls}"></span>${meta.label}
+                 </button>`;
+      }).join('');
+      document.querySelectorAll('[data-set-prio]').forEach(b => b.addEventListener('click', () => {
+        mPriority = b.dataset.setPrio;
+        renderPriorityPills();
+      }));
+    }
+    function renderColorSwatches() {
+      const target = document.getElementById('m-color-swatches');
+      const hintEl = document.getElementById('m-color-hint');
+      // Si la tarea tiene proyecto con color default y la tarea NO tiene
+      // color propio, "sin color" en realidad hereda. Lo decimos en el hint
+      // y en el tooltip del botón.
+      const projectColor = mProject.value ? (projectColors[mProject.value] ?? null) : null;
+      const noColorTitle = projectColor ? `No custom color · inherits ${COLOR_META[projectColor].label.toLowerCase()} from project` : 'No color';
+      const noColorBtn = `<button type="button" data-set-color=""
+        title="${noColorTitle}"
+        class="w-7 h-7 rounded-full bg-white dark:bg-slate-800 ring-1 ring-slate-300 dark:ring-slate-600 hover:ring-2 hover:ring-slate-500 dark:hover:ring-slate-400 transition-all flex items-center justify-center ${mColor == null ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="text-slate-400 dark:text-slate-500">
+          <line x1="5" y1="19" x2="19" y2="5"/>
+        </svg>
+      </button>`;
+      const swatches = COLOR_KEYS.map(k => {
+        const meta = COLOR_META[k];
+        const active = mColor === k;
+        return `<button type="button" data-set-color="${k}" title="${meta.label}"
+          class="w-7 h-7 rounded-full ${meta.swatch} ring-1 ring-black/10 dark:ring-white/10 hover:ring-2 hover:ring-slate-500 dark:hover:ring-slate-300 transition-all ${active ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}"></button>`;
+      }).join('');
+      target.innerHTML = noColorBtn + swatches;
+      if (mColor == null && projectColor) {
+        hintEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${COLOR_META[projectColor].swatch}"></span>Inherited from project</span>`;
+      } else if (mColor != null && projectColor && mColor !== projectColor) {
+        hintEl.innerHTML = `<span class="text-slate-400 dark:text-slate-500">Overriding project default (${COLOR_META[projectColor].label.toLowerCase()})</span>`;
+      } else {
+        hintEl.textContent = '';
+      }
+      target.querySelectorAll('[data-set-color]').forEach(b => b.addEventListener('click', () => {
+        mColor = b.dataset.setColor || null;
+        renderColorSwatches();
+      }));
+    }
+    function updateDueHint() {
+      const d = daysUntil(mDue.value || null);
+      const t = dueText(d);
+      mDueHint.innerHTML = mDue.value ? `<span class="${t.cls}">${t.txt}</span>` : '<span class="text-slate-300 dark:text-slate-600">no date</span>';
+    }
+    function switchTab(which) {
+      const ed = document.getElementById('tab-edit');
+      const pv = document.getElementById('tab-preview');
+      const activeCls = ['bg-white','dark:bg-slate-700','shadow-soft','text-slate-900','dark:text-slate-100'];
+      if (which === 'preview') {
+        ed.classList.remove(...activeCls);
+        pv.classList.add(...activeCls);
+        mBody.classList.add('hidden');
+        mPreview.classList.remove('hidden');
+        renderPreview();
+      } else {
+        pv.classList.remove(...activeCls);
+        ed.classList.add(...activeCls);
+        mPreview.classList.add('hidden');
+        mBody.classList.remove('hidden');
+      }
+    }
+    async function renderPreview() {
+      const current = modalFile ? tasks.find(t => t.file === modalFile) : null;
+      if (current && current.body.replace(/^\n+/,'') === mBody.value.replace(/^\n+/,'')) {
+        mPreview.innerHTML = current.body_html || '<p class="text-slate-400 dark:text-slate-500 italic">sin contenido</p>';
+        return;
+      }
+      try {
+        const res = await fetch('/api/preview', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: mBody.value }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          mPreview.innerHTML = d.html || '<p class="text-slate-400 dark:text-slate-500 italic">sin contenido</p>';
+        } else {
+          mPreview.innerHTML = '<p class="text-rose-600 dark:text-rose-400 text-sm">Error al renderizar</p>';
+        }
+      } catch {
+        mPreview.innerHTML = '<p class="text-rose-600 dark:text-rose-400 text-sm">Error de red</p>';
+      }
+    }
+
+    function openModal(file, defaults) {
+      defaults = defaults || {};
+      modalFile = file ?? null;
+      if (file) {
+        const t = tasks.find(x => x.file === file);
+        if (!t) return;
+        mTitle.value     = t.title;
+        mFile.textContent = t.file;
+        mStatus          = t.status;
+        mPriority        = t.priority;
+        mColor           = t.color ?? null;
+        mDue.value       = t.due ?? '';
+        mProject.value   = t.project ?? '';
+        mBlockedBy.value = t.blocked_by ?? '';
+        mBody.value      = t.body.replace(/^\n+/, '');
+        mDelete.classList.remove('invisible');
+        mCopyPrompt.classList.remove('invisible');
+      } else {
+        // New task: aplica defaults explícitos (ej. status del + de columna)
+        // y, si no, hereda los filtros activos para que crear desde un filtro
+        // produzca una tarea en ese mismo contexto.
+        mTitle.value = '';
+        mFile.textContent = '(nueva)';
+        mStatus = defaults.status || 'pending';
+        mPriority = defaults.priority || filters.priority || 'normal';
+        mColor = defaults.color ?? null;
+        mDue.value = defaults.due ?? (filters.due === 'today' ? todayLima() : '');
+        mProject.value = defaults.project ?? (filters.project || '');
+        mBlockedBy.value = '';
+        mBody.value = '';
+        mDelete.classList.add('invisible');
+        mCopyPrompt.classList.add('invisible');
+      }
+      renderStatusPills();
+      renderPriorityPills();
+      renderColorSwatches();
+      updateDueHint();
+      switchTab('edit');
+      modal.classList.remove('hidden');
+      setTimeout(() => mTitle.focus(), 60);
+    }
+    function closeModal() {
+      modal.classList.add('hidden');
+      modalFile = null;
+    }
+    document.getElementById('m-close').addEventListener('click', closeModal);
+    document.getElementById('m-cancel').addEventListener('click', closeModal);
+    document.getElementById('tab-edit').addEventListener('click', () => switchTab('edit'));
+    document.getElementById('tab-preview').addEventListener('click', () => switchTab('preview'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        openModal(null);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !modal.classList.contains('hidden')) {
+        e.preventDefault();
+        document.getElementById('m-save').click();
+      }
+    });
+    document.getElementById('new-task-btn').addEventListener('click', () => openModal(null));
+    mDue.addEventListener('input', updateDueHint);
+    // Si cambia el proyecto, re-renderizar swatches para refrescar el hint
+    // "heredado de" según el color default del nuevo proyecto.
+    mProject.addEventListener('change', renderColorSwatches);
+    if (!clientConfig.claudeEnabled) mCopyPrompt.classList.add('hidden');
+    mCopyPrompt.addEventListener('click', async () => {
+      if (!modalFile) return;
+      const title = mTitle.value.trim();
+      if (!title) { toast(MSG.modal.no_title, 'error'); return; }
+      const prompt = buildClaudePrompt(modalFile, title, mProject.value || '');
+      if (!prompt) return;
+      const ok = await copyText(prompt);
+      toast(ok ? MSG.modal.prompt_copied : MSG.modal.copy_failed, ok ? 'success' : 'error');
+    });
+
+    document.getElementById('m-save').addEventListener('click', async () => {
+      const payload = {
+        title:      mTitle.value.trim(),
+        status:     mStatus,
+        priority:   mPriority,
+        due:        mDue.value || null,
+        project:    mProject.value || null,
+        blocked_by: mBlockedBy.value.trim() || null,
+        color:      mColor,
+        body:       mBody.value,
+      };
+      if (!payload.title) { toast(MSG.modal.title_required, 'error'); return; }
+      try {
+        const res = modalFile
+          ? await fetch(`/api/tasks?file=${encodeURIComponent(modalFile)}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+          : await fetch('/api/tasks', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+        if (!res.ok) throw new Error(await res.text());
+        closeModal();
+        await reloadTasks();
+        toast(modalFile ? MSG.modal.changes_saved : MSG.modal.task_created, 'success');
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+    mDelete.addEventListener('click', async () => {
+      if (!modalFile) return;
+      if (!confirm(`Delete permanentemente "${mTitle.value}"?\n\nThis removes the file from your vault. Cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/tasks?file=${encodeURIComponent(modalFile)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+        closeModal();
+        await reloadTasks();
+        toast(MSG.modal.task_deleted, 'success');
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+
+    async function reloadTasks() {
+      const res = await fetch('/api/tasks');
+      const data = await res.json();
+      tasks = data.tasks ?? [];
+      renderStats();
+      renderChips();
+      renderBoard();
+    }
+
+    // ── Search ────────────────────────────────────────────────────────
+    const search = document.getElementById('search');
+    const searchClear = document.getElementById('search-clear');
+    search.addEventListener('input', (e) => {
+      filters.search = e.target.value.trim();
+      searchClear.classList.toggle('hidden', !filters.search);
+      renderChips(); renderBoard(); updateClearBtn();
+    });
+    searchClear.addEventListener('click', () => {
+      search.value = '';
+      filters.search = '';
+      searchClear.classList.add('hidden');
+      renderChips(); renderBoard(); updateClearBtn();
+    });
+    document.getElementById('clear-filters').addEventListener('click', () => {
+      filters = { search: '', project: '', priority: '', due: '', status: '' };
+      search.value = '';
+      searchClear.classList.add('hidden');
+      renderStats(); renderChips(); renderBoard(); updateClearBtn();
+    });
+
+    // Hidratar el input de búsqueda con el filtro restaurado y mostrar la ×
+    // si correspondía. (El resto del estado restaurado se refleja al renderear.)
+    if (filters.search) {
+      const searchEl = document.getElementById('search');
+      const searchClearEl = document.getElementById('search-clear');
+      searchEl.value = filters.search;
+      searchClearEl.classList.remove('hidden');
+    }
+    renderStats();
+    renderChips();
+    renderBoard();
+    updateClearBtn();
+
+    // Deep-link desde /proyectos: el botón "+" de una card de proyecto navega
+    // a /?newtask=<slug>. Abrimos el modal de create con ese project pre-puesto
+    // y limpiamos el query string para que recargar no vuelva a abrirlo.
+    (function() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const newTaskFor = params.get('newtask');
+        if (newTaskFor) {
+          openModal(null, { project: newTaskFor });
+          const url = new URL(window.location.href);
+          url.searchParams.delete('newtask');
+          history.replaceState(null, '', url.toString());
+        }
+      } catch {}
+    })();
+
+    // ── Polling ───────────────────────────────────────────────────────
+    // Necesario para ver cambios externos (Claude disparando claude_start vía
+    // curl, edición directa del vault, otra pestaña). Cada 5s. Diff coarse:
+    // solo re-renderiza si cambia algo que afecta la vista. Se pausa con tab
+    // oculto y mientras hay un drag o el modal está abierto, para no romper UX.
+    function tasksFingerprint(ts) {
+      return ts.map(t => `${t.file}|${t.status}|${t.claude_active ? 1 : 0}|${t.pos}|${t.color ?? ''}|${t.mtime}`).join('\n');
+    }
+    let lastFingerprint = tasksFingerprint(tasks);
+    // Baseline para detectar transiciones de Claude (start/done). Map file →
+    // {status, claude_active}. Solo se notifican TRANSICIONES dentro de la
+    // sesión: si abrís el board y ya hay una tarea en pending-review, no salta
+    // notificación (esa señal ya pasó); cuando una nueva tarea cambia, sí.
+    let claudeBaseline = new Map(tasks.map(t => [t.file, { status: t.status, claude_active: t.claude_active }]));
+    function diffClaudeTransitions(prevMap, nextList) {
+      const out = [];
+      for (const t of nextList) {
+        const prev = prevMap.get(t.file);
+        if (!prev) continue; // tarea nueva: no notificar
+        // Empezó: claude_active pasó de false → true.
+        if (!prev.claude_active && t.claude_active) {
+          out.push({ kind: 'start', title: t.title, file: t.file });
+          continue;
+        }
+        // Terminó: claude_active true → false. Cubre los tres cierres:
+        //   op=done   → status='done'           (archivada)
+        //   op=review → status='pending-review' (waiting for the user)
+        //   op=stop   → status sin cambio       (legacy, raro)
+        // El polling cada 5s puede saltarse estados intermedios; usar el flag
+        // claude_active (no el status) garantiza que toda transición Claude→OFF
+        // dispare la notificación.
+        if (prev.claude_active && !t.claude_active) {
+          const kind = t.status === 'pending-review' ? 'review'
+                     : t.status === 'done'           ? 'archived'
+                     : 'stopped';
+          out.push({ kind, title: t.title, file: t.file });
+        }
+      }
+      return out;
+    }
+    let pollTimer = null;
+    async function pollTasks() {
+      if (document.hidden) return;
+      if (draggedFile) return;
+      if (!modal.classList.contains('hidden')) return;
+      try {
+        const res = await fetch('/api/tasks');
+        if (!res.ok) return;
+        const data = await res.json();
+        const next = data.tasks ?? [];
+        const fp = tasksFingerprint(next);
+        if (fp === lastFingerprint) return;
+        // Detectar transiciones ANTES de pisar baseline. Kinds:
+        //   start, review (→ pending-review), archived (→ done), stopped (op=stop)
+        const events = diffClaudeTransitions(claudeBaseline, next);
+        const NOTIF_META = {
+          start:    { toast: t => ({ msg: `Claude started: ${t}`,                     kind: 'info'    }) },
+          review:   { toast: t => ({ msg: `Claude finished: ${t} · por revisar`,      kind: 'success' }) },
+          archived: { toast: t => ({ msg: `Claude archived: ${t}`,                    kind: 'success' }) },
+          stopped:  { toast: t => ({ msg: `Claude stopped: ${t}`,                     kind: 'info'    }) },
+        };
+        for (const e of events) {
+          const meta = NOTIF_META[e.kind];
+          if (!meta) continue;
+          const t = meta.toast(e.title);
+          toast(t.msg, t.kind);
+          if (typeof window.pushClaudeNotif === 'function') {
+            window.pushClaudeNotif({ kind: e.kind, title: e.title, file: e.file });
+          }
+        }
+        claudeBaseline = new Map(next.map(t => [t.file, { status: t.status, claude_active: t.claude_active }]));
+        tasks = next;
+        lastFingerprint = fp;
+        renderStats(); renderChips(); renderBoard();
+      } catch {}
+    }
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(pollTasks, 5000);
+    }
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopPolling();
+      else { pollTasks(); startPolling(); }
+    });
+    startPolling();
+  </script>
+</Layout>

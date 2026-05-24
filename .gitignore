@@ -1,0 +1,30 @@
+# build output
+dist/
+.astro/
+
+# deps
+node_modules/
+
+# env (we don't use any but be defensive)
+.env
+.env.*
+
+# personal config — copy tareas.config.example.json to tareas.config.json
+tareas.config.json
+
+# vault: the repo ships with a small set of sample .md files in vault/
+# so that clone + npm run dev shows a populated board. If you want to drop
+# your own vault here (vs configuring `vault.tareasDir` to an external path)
+# uncomment these lines and your tasks won't be committed:
+# /vault/tareas/*.md
+# /vault/tareas/done/
+# /vault/projects/**/*.md
+# /vault/embeds/
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# OS / misc
+*.log

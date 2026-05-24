@@ -1,0 +1,22 @@
+{
+  "vault": {
+    "tareasDir":   "./vault/tareas",
+    "projectsDir": "./vault/projects",
+    "embedsDir":   "./vault/embeds"
+  },
+  "ui": {
+    "timezone": "UTC",
+    "title":    "Vault",
+    "locale":   "en"
+  },
+  "claude": {
+    "enabled":    false,
+    "apiBaseUrl": "http://localhost:3004"
+  },
+  "projects": {
+    "categories": [
+      { "key": "personal", "label": "Personal", "emoji": "🚀", "fields": ["type", "updated", "status", "path"] },
+      { "key": "work",     "label": "Work",     "emoji": "💼", "fields": ["type", "updated", "employer", "path"] }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+# Klaudban — docker compose.
+#
+# One-command run:  docker compose up -d
+# The board ends up at http://localhost:4321
+#
+# Edit `volumes` below to point at your real vault (Obsidian directory, Syncthing
+# share, whatever). The container's /app/vault is intentionally empty so the
+# first boot uses what you mount.
+
+services:
+  klaudban:
+    image: klaudban:latest
+    build: .
+    container_name: klaudban
+    restart: unless-stopped
+    ports:
+      - "4321:4321"
+    volumes:
+      # Replace ./vault with your real vault path. Inside the container the app
+      # always reads/writes to /app/vault — keep it that way.
+      - ./vault:/app/vault
+      # Optional: mount your own config to override the bundled defaults.
+      # If you skip this, the bundled tareas.config.example.json is used.
+      - ./tareas.config.json:/app/tareas.config.json:ro
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "4321"

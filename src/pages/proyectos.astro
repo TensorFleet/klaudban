@@ -1,0 +1,608 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { t, MESSAGES } from '../i18n';
+import { listAll, CATEGORIES, CATEGORY_LABEL, CATEGORY_FIELDS, CATEGORY_EMOJI, type Category } from '../lib/projects';
+
+const projects = listAll();
+const byCategory: Record<string, typeof projects> = Object.fromEntries(CATEGORIES.map(c => [c, [] as typeof projects]));
+for (const p of projects) (byCategory[p.category] ??= []).push(p);
+
+// Stats globales para el hero
+const totalProjects = projects.length;
+const staleProjects = projects.filter(p => p.days_since_touched > 30).length;
+const recentProjects = projects.filter(p => p.days_since_touched <= 7).length;
+
+// Paleta rotativa para las secciones de category — se asigna por índice así
+// que cualquier número de categorys recibe colores distintos sin requerir
+// que el usuario los defina.
+const PALETTES = [
+  { ring: 'ring-emerald-200 dark:ring-emerald-800/50', bg: 'bg-emerald-50/50 dark:bg-emerald-900/10' },
+  { ring: 'ring-sky-200 dark:ring-sky-800/50',         bg: 'bg-sky-50/50 dark:bg-sky-900/10' },
+  { ring: 'ring-violet-200 dark:ring-violet-800/50',   bg: 'bg-violet-50/50 dark:bg-violet-900/10' },
+  { ring: 'ring-amber-200 dark:ring-amber-800/50',     bg: 'bg-amber-50/50 dark:bg-amber-900/10' },
+  { ring: 'ring-pink-200 dark:ring-pink-800/50',       bg: 'bg-pink-50/50 dark:bg-pink-900/10' },
+  { ring: 'ring-cyan-200 dark:ring-cyan-800/50',       bg: 'bg-cyan-50/50 dark:bg-cyan-900/10' },
+];
+const CATEGORY_META: Record<string, { emoji: string; ring: string; bg: string }> = Object.fromEntries(
+  CATEGORIES.map((c, i) => [c, { emoji: CATEGORY_EMOJI[c] ?? '📁', ...PALETTES[i % PALETTES.length] }])
+);
+---
+<Layout title="Projects" active="proyectos">
+  <!-- HERO STATS -->
+  <section class="grid grid-cols-3 gap-3 mb-7">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-800 p-4">
+      <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Total</p>
+      <p class="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{totalProjects}</p>
+    </div>
+    <div class="bg-white dark:bg-slate-900 rounded-2xl ring-1 ring-emerald-200 dark:ring-emerald-800/50 p-4">
+      <p class="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-1">Recent (≤7d)</p>
+      <p class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{recentProjects}</p>
+    </div>
+    <div class="bg-white dark:bg-slate-900 rounded-2xl ring-1 ring-rose-200 dark:ring-rose-800/50 p-4">
+      <p class="text-[11px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1">Stale (&gt;30d)</p>
+      <p class="text-2xl font-extrabold text-rose-600 dark:text-rose-400">{staleProjects}</p>
+    </div>
+  </section>
+
+  <!-- FILTROS -->
+  <section class="mb-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="relative flex-1 min-w-[200px] max-w-md">
+        <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20.5" y1="20.5" x2="16.65" y2="16.65"/></svg>
+        <input id="search" type="text" placeholder="Search projects…"
+               class="w-full bg-white dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-9 py-2.5 text-sm shadow-soft focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+      </div>
+      <div id="cat-filters" class="flex flex-wrap gap-1.5"></div>
+    </div>
+  </section>
+
+  <!-- LISTAS POR CATEGORÍA -->
+  <div id="categories" class="space-y-6">
+    {CATEGORIES.map(cat => (
+      <section data-category={cat} class={`rounded-2xl p-4 sm:p-5 ${CATEGORY_META[cat].bg} ring-1 ${CATEGORY_META[cat].ring}`}>
+        <header class="flex items-center justify-between mb-3">
+          <h2 class="flex items-center gap-2 text-base font-bold text-slate-800 dark:text-slate-100">
+            <span class="text-xl">{CATEGORY_META[cat].emoji}</span>
+            <span>{CATEGORY_LABEL[cat]}</span>
+            <span class="text-xs font-normal text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/60 px-2 py-0.5 rounded-full">{byCategory[cat].length}</span>
+          </h2>
+        </header>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" data-cards={cat}>
+          {byCategory[cat].length === 0 && (
+            <p class="text-sm text-slate-500 dark:text-slate-500 italic col-span-full">No projects in this category.</p>
+          )}
+        </div>
+      </section>
+    ))}
+  </div>
+
+  <!-- MODAL editor -->
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md flex items-start sm:items-center justify-center p-2 sm:p-6 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-5xl w-full my-4 overflow-hidden flex flex-col max-h-[92vh] ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+      <div class="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex-1 min-w-0">
+          <input id="m-title" type="text" placeholder="Project title"
+                 class="w-full text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 bg-transparent placeholder-slate-300 dark:placeholder-slate-600 border-0 focus:ring-0 outline-none px-0 py-0 tracking-tight" />
+          <p id="m-meta" class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 font-mono"></p>
+        </div>
+        <button id="m-close" class="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 w-9 h-9 flex items-center justify-center rounded-lg text-xl leading-none shrink-0">×</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto scrollbar-thin">
+        <div class="grid md:grid-cols-[280px_1fr] gap-0">
+          <!-- Sidebar: frontmatter estructurado -->
+          <aside class="p-5 sm:p-6 md:border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 space-y-4">
+            <div id="m-create-fields" class="space-y-3 hidden">
+              <!-- Solo visible al crear -->
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Category</label>
+                <div id="m-category-pills" class="grid grid-cols-2 gap-1.5"></div>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Slug (filename)</label>
+                <input id="m-slug" type="text" placeholder="auto-generated from title"
+                       class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none" />
+              </div>
+            </div>
+
+            <div id="m-edit-fields" class="space-y-3 hidden">
+              <!-- Solo visible al editar: frontmatter dinámico según category -->
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Category</p>
+                <p id="m-edit-category" class="text-sm font-semibold text-slate-700 dark:text-slate-200"></p>
+              </div>
+              <div>
+                <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Color default</p>
+                <div id="m-color-swatches" class="flex flex-wrap gap-1.5"></div>
+                <p class="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1.5">Cards for this project without a custom color inherit this one.</p>
+              </div>
+              <div id="m-fm-fields" class="space-y-3"></div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/60">
+                <p>Updated: <span id="m-mtime" class="font-semibold"></span></p>
+                <p><span id="m-stale" class="font-semibold"></span></p>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Body editor + preview -->
+          <section class="p-5 sm:p-6 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Contenido</label>
+              <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 text-xs font-semibold">
+                <button id="tab-edit" class="px-3 py-1 rounded-md text-slate-600 dark:text-slate-400">Edit</button>
+                <button id="tab-preview" class="px-3 py-1 rounded-md text-slate-600 dark:text-slate-400">Preview</button>
+              </div>
+            </div>
+            <textarea id="m-body" rows="18"
+                      placeholder="# Title&#10;&#10;Project description en markdown…"
+                      class="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-mono leading-relaxed resize-y bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none scrollbar-thin"></textarea>
+            <div id="m-preview" class="hidden border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-800 prose-task overflow-auto scrollbar-thin" style="min-height: 14rem;"></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 px-6 py-4 bg-slate-50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800">
+        <button id="m-delete" class="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 font-semibold px-3 py-2 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          Delete
+        </button>
+        <div class="flex gap-2">
+          <button id="m-cancel" class="text-sm px-4 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 font-medium">Cancel</button>
+          <button id="m-save"   class="text-sm px-5 py-2 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white font-semibold shadow-lift">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ initialProjects: projects, categoriesMeta: CATEGORY_META, categoryLabels: CATEGORY_LABEL, categoryFields: CATEGORY_FIELDS, categoryKeys: CATEGORIES }}>
+    // OJO: define:vars implica is:inline → NO usar sintaxis TypeScript aquí.
+
+    // Categorys y metadata vienen del server (CONFIG.projects.categories).
+    const CATEGORY_LABEL = categoryLabels;
+    const CATEGORY_EMOJI = Object.fromEntries(Object.entries(categoriesMeta).map(([k, v]) => [k, v.emoji]));
+    const CATEGORIES = categoryKeys;
+    const CATEGORY_FIELDS = categoryFields;
+    // Labels para los inputs del frontmatter — los nombres bonitos. Si un campo
+    // no está acá, se usa el key como label (con primera letra mayúscula).
+    const FIELD_LABEL = {
+      type: 'Type', updated: 'Updated', path: 'Path', port: 'Port', deploy: 'Deploy',
+      location: 'Location', status: 'Status', target: 'Target', client: 'Client', employer: 'Employer',
+    };
+    function fieldLabel(k) { return FIELD_LABEL[k] || (k.charAt(0).toUpperCase() + k.slice(1)); }
+
+    let projects = initialProjects;
+    let filters = { search: '', category: '', noTasks: false };
+    let modalFile = null;
+    let modalMode = 'view';
+    let createCategory = CATEGORIES[0] || 'personal';
+    let mColor = null; // color default del proyecto (frontmatter.color)
+
+    // Misma paleta que las cards en index.astro. Si cambia ahí, cambiar acá.
+    const COLOR_META = {
+      yellow: { label: 'Yellow', swatch: 'bg-amber-300' },
+      green:  { label: 'Green',    swatch: 'bg-emerald-400' },
+      blue:   { label: 'Blue',     swatch: 'bg-sky-400' },
+      purple: { label: 'Purple',   swatch: 'bg-violet-400' },
+      pink:   { label: 'Pink',     swatch: 'bg-pink-400' },
+      gray:   { label: 'Gray',     swatch: 'bg-slate-400' },
+    };
+    const COLOR_KEYS = ['yellow', 'green', 'blue', 'purple', 'pink', 'gray'];
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function staleColor(days) {
+      if (days === 0) return { text: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30', ring: 'ring-emerald-200 dark:ring-emerald-800/50', dot: 'bg-emerald-500' };
+      if (days <= 7)  return { text: 'text-slate-600 dark:text-slate-300',     bg: 'bg-slate-100 dark:bg-slate-700/50',    ring: 'ring-slate-200 dark:ring-slate-600/50',    dot: 'bg-slate-400' };
+      if (days <= 30) return { text: 'text-amber-700 dark:text-amber-400',     bg: 'bg-amber-50 dark:bg-amber-900/30',     ring: 'ring-amber-200 dark:ring-amber-800/50',    dot: 'bg-amber-500' };
+      if (days <= 90) return { text: 'text-orange-700 dark:text-orange-400',   bg: 'bg-orange-50 dark:bg-orange-900/30',   ring: 'ring-orange-200 dark:ring-orange-800/50',  dot: 'bg-orange-500' };
+      return            { text: 'text-rose-700 dark:text-rose-400',            bg: 'bg-rose-50 dark:bg-rose-900/30',       ring: 'ring-rose-200 dark:ring-rose-800/50',      dot: 'bg-rose-500' };
+    }
+    function staleLabel(days) {
+      if (days === 0) return 'hoy';
+      if (days === 1) return '1 día';
+      if (days < 30)  return `${days} días`;
+      const months = Math.floor(days / 30);
+      if (months < 12) return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+      const years = Math.floor(days / 365);
+      return `${years} ${years === 1 ? 'año' : 'años'}`;
+    }
+    // Texto completo para el badge: invierte el verbo cuando se tocó hoy.
+    // "sin tocar hoy" leía como negación; lo correcto es "tocado hoy".
+    function staleText(days) {
+      if (days === 0) return 'tocado hoy';
+      return `sin tocar ${staleLabel(days)}`;
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      } catch { return iso; }
+    }
+
+    // ── Render filters (category chips + chip "sin tareas") ─────────────
+    function renderCatFilters() {
+      const wrap = document.getElementById('cat-filters');
+      const catChips = CATEGORIES.map(c => {
+        const count = projects.filter(p => p.category === c).length;
+        const active = filters.category === c;
+        return `<button data-cat="${c}" class="px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+          active
+            ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm'
+            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+        }">${CATEGORY_EMOJI[c]} ${CATEGORY_LABEL[c]} <span class="opacity-60">${count}</span></button>`;
+      }).join('');
+      // Chip "sin tareas activas" — separa visualmente con border-l para que no se confunda con category
+      const noTasksCount = projects.filter(p => p.tasks_open === 0).length;
+      const noTasksActive = filters.noTasks;
+      const noTasksChip = `<button data-no-tasks class="ml-1 pl-3 border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 rounded-r-lg text-xs font-medium transition-all flex items-center gap-1 ${
+        noTasksActive
+          ? 'bg-brand-600 dark:bg-brand-500 text-white shadow-sm'
+          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+      }">📋 Sin tareas <span class="opacity-60">${noTasksCount}</span></button>`;
+      wrap.innerHTML = catChips + noTasksChip;
+      wrap.querySelectorAll('[data-cat]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const c = btn.dataset.cat;
+          filters.category = (filters.category === c) ? '' : c;
+          renderCatFilters();
+          renderCards();
+        });
+      });
+      wrap.querySelector('[data-no-tasks]')?.addEventListener('click', () => {
+        filters.noTasks = !filters.noTasks;
+        renderCatFilters();
+        renderCards();
+      });
+    }
+
+    // ── Render project cards ────────────────────────────────────────────
+    function projectCard(p) {
+      const s = staleColor(p.days_since_touched);
+      const fm = p.frontmatter || {};
+      const status = fm.status ? esc(fm.status) : null;
+      const rawColor = typeof fm.color === 'string' ? fm.color.toLowerCase() : null;
+      const colorMeta = rawColor && COLOR_META[rawColor] ? COLOR_META[rawColor] : null;
+      const colorDot = colorMeta
+        ? `<span class="w-2.5 h-2.5 rounded-full ${colorMeta.swatch} ring-1 ring-white dark:ring-slate-900 shrink-0" title="Color default: ${colorMeta.label}"></span>`
+        : '';
+      // Body típico empieza con `\n# Title\n\nDescripción...`. trim() PRIMERO
+      // para que ^# matchee y quite el H1 (sino el nombre del proyecto se cuela
+      // como descripción → triplicado con el <h3>).
+      const description = (p.body || '')
+        .replace(/^---[\s\S]*?---/, '')
+        .trim()
+        .replace(/^#[^\n]*\n/, '')
+        .split(/\n\s*\n/)[0]
+        .trim();
+      const desc = description.slice(0, 120).replace(/[#*`_>]/g, '').trim();
+
+      // Badge de tareas: solo si hay alguna, para no llenar la card de ceros.
+      const tasksBadge = p.tasks_open > 0
+        ? `<span class="text-[10px] font-semibold text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-1 rounded-full ring-1 ring-brand-200 dark:ring-brand-800/50">${p.tasks_open} ${p.tasks_open === 1 ? 'tarea' : 'tareas'}</span>`
+        : `<span class="text-[10px] font-medium text-slate-400 dark:text-slate-500 italic">sin tareas</span>`;
+
+      return `<article data-file="${esc(p.file)}" class="group relative bg-white dark:bg-slate-800 rounded-xl p-4 ring-1 ring-slate-200 dark:ring-slate-700 hover:ring-brand-300 dark:hover:ring-brand-700 hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer">
+        <button data-new-task-for="${esc(p.file)}" title="New task in this project"
+          class="opacity-0 group-hover:opacity-100 absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 hover:bg-brand-100 dark:hover:bg-brand-900/60 ring-1 ring-brand-200 dark:ring-brand-700/50 transition-all text-base leading-none font-bold">+</button>
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div class="flex items-center gap-2 min-w-0 flex-1">
+            ${colorDot}
+            <h3 class="font-bold text-slate-900 dark:text-slate-100 text-sm leading-tight truncate min-w-0 flex-1 pr-7">${esc(p.title)}</h3>
+          </div>
+          ${status ? `<span class="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded shrink-0">${status}</span>` : ''}
+        </div>
+        ${desc ? `<p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 mb-3">${esc(desc)}</p>` : '<div class="mb-3"></div>'}
+        <div class="flex items-center justify-between gap-2 text-[10px]">
+          <span class="flex items-center gap-1.5 ${s.text} font-semibold ${s.bg} px-2 py-1 rounded-full ring-1 ${s.ring}">
+            <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>
+            ${staleText(p.days_since_touched)}
+          </span>
+          ${tasksBadge}
+        </div>
+      </article>`;
+    }
+
+    function renderCards() {
+      const q = filters.search.toLowerCase();
+      const filtered = projects.filter(p => {
+        if (filters.category && p.category !== filters.category) return false;
+        if (filters.noTasks && p.tasks_open !== 0) return false;
+        if (q) {
+          const hay = (p.title + ' ' + p.file + ' ' + p.body).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+      const grouped = Object.fromEntries(CATEGORIES.map(c => [c, []]));
+      for (const p of filtered) (grouped[p.category] ??= []).push(p);
+
+      for (const cat of CATEGORIES) {
+        const wrap = document.querySelector(`[data-cards="${cat}"]`);
+        const items = grouped[cat];
+        wrap.innerHTML = items.length === 0
+          ? '<p class="text-sm text-slate-500 dark:text-slate-500 italic col-span-full">No projects in this category.</p>'
+          : items.map(projectCard).join('');
+        wrap.querySelectorAll('[data-file]').forEach(card => {
+          card.addEventListener('click', () => openModal(card.dataset.file));
+        });
+        // Botón "+": abre el create-task modal en /tareas con el project ya
+        // pre-poblado. Vive en otra página, así que viajamos via query string
+        // ?newtask=<slug> — index.astro lee el param al boot.
+        wrap.querySelectorAll('[data-new-task-for]').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            window.location.href = '/?newtask=' + encodeURIComponent(btn.dataset.newTaskFor);
+          });
+        });
+      }
+    }
+
+    // ── Search ──────────────────────────────────────────────────────────
+    document.getElementById('search').addEventListener('input', e => {
+      filters.search = e.target.value;
+      renderCards();
+    });
+
+    // ── Modal helpers ───────────────────────────────────────────────────
+    const modal       = document.getElementById('modal');
+    const mTitle      = document.getElementById('m-title');
+    const mMeta       = document.getElementById('m-meta');
+    const mBody       = document.getElementById('m-body');
+    const mPreview    = document.getElementById('m-preview');
+    const mDelete     = document.getElementById('m-delete');
+    const mCreateFields = document.getElementById('m-create-fields');
+    const mEditFields   = document.getElementById('m-edit-fields');
+    const mFmFields     = document.getElementById('m-fm-fields');
+    const mEditCategory = document.getElementById('m-edit-category');
+    const mMtime        = document.getElementById('m-mtime');
+    const mStale        = document.getElementById('m-stale');
+    const mSlug         = document.getElementById('m-slug');
+    const mCategoryPills= document.getElementById('m-category-pills');
+
+    function renderCategoryPills() {
+      mCategoryPills.innerHTML = CATEGORIES.map(c => `
+        <button data-pick-cat="${c}" class="px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          createCategory === c
+            ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900'
+            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700'
+        }">${CATEGORY_EMOJI[c]} ${CATEGORY_LABEL[c]}</button>
+      `).join('');
+      mCategoryPills.querySelectorAll('[data-pick-cat]').forEach(b => {
+        b.addEventListener('click', () => {
+          createCategory = b.dataset.pickCat;
+          renderCategoryPills();
+        });
+      });
+    }
+
+    function renderColorSwatches() {
+      const target = document.getElementById('m-color-swatches');
+      const noColor = `<button type="button" data-set-color="" title="No color default"
+        class="w-7 h-7 rounded-full bg-white dark:bg-slate-800 ring-1 ring-slate-300 dark:ring-slate-600 hover:ring-2 hover:ring-slate-500 transition-all flex items-center justify-center ${mColor == null ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="text-slate-400 dark:text-slate-500">
+          <line x1="5" y1="19" x2="19" y2="5"/>
+        </svg>
+      </button>`;
+      const swatches = COLOR_KEYS.map(k => {
+        const meta = COLOR_META[k];
+        const active = mColor === k;
+        return `<button type="button" data-set-color="${k}" title="${meta.label}"
+          class="w-7 h-7 rounded-full ${meta.swatch} ring-1 ring-black/10 dark:ring-white/10 hover:ring-2 hover:ring-slate-500 transition-all ${active ? 'ring-2 ring-slate-900 dark:ring-slate-100' : ''}"></button>`;
+      }).join('');
+      target.innerHTML = noColor + swatches;
+      target.querySelectorAll('[data-set-color]').forEach(b => b.addEventListener('click', () => {
+        mColor = b.dataset.setColor || null;
+        renderColorSwatches();
+      }));
+    }
+
+    function renderFmFields(p) {
+      const fields = CATEGORY_FIELDS[p.category] || [];
+      const fm = p.frontmatter || {};
+      mFmFields.innerHTML = fields.map(f => {
+        // type y updated son read-only (managed automaticamente)
+        const readonly = (f === 'type' || f === 'updated');
+        const val = fm[f] ?? '';
+        return `<div>
+          <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">${fieldLabel(f)}</label>
+          <input data-fm-field="${f}" type="text" value="${esc(val)}" ${readonly ? 'readonly' : ''}
+                 class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 dark:text-slate-100 ${readonly ? 'opacity-60 cursor-not-allowed' : 'focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/40'} outline-none" />
+        </div>`;
+      }).join('');
+    }
+
+    function switchTab(which) {
+      const editBtn = document.getElementById('tab-edit');
+      const prevBtn = document.getElementById('tab-preview');
+      if (which === 'preview') {
+        mBody.classList.add('hidden');
+        mPreview.classList.remove('hidden');
+        editBtn.classList.remove('bg-white','dark:bg-slate-900','shadow-sm');
+        prevBtn.classList.add('bg-white','dark:bg-slate-900','shadow-sm');
+        // Render preview con marked client-side cargado del API
+        renderPreview();
+      } else {
+        mBody.classList.remove('hidden');
+        mPreview.classList.add('hidden');
+        editBtn.classList.add('bg-white','dark:bg-slate-900','shadow-sm');
+        prevBtn.classList.remove('bg-white','dark:bg-slate-900','shadow-sm');
+      }
+    }
+
+    async function renderPreview() {
+      try {
+        const res = await fetch('/api/preview', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: mBody.value }),
+        });
+        const data = await res.json();
+        mPreview.innerHTML = data.html ?? '';
+      } catch {
+        mPreview.innerHTML = '<p class="text-rose-600">Error al renderizar preview</p>';
+      }
+    }
+
+    document.getElementById('tab-edit').addEventListener('click', () => switchTab('edit'));
+    document.getElementById('tab-preview').addEventListener('click', () => switchTab('preview'));
+
+    function openModalView(file) {
+      const p = projects.find(x => x.file === file);
+      if (!p) return;
+      modalMode = 'edit';
+      modalFile = p.file;
+      mTitle.value = p.title;
+      mMeta.textContent = `${p.category}/${p.file}.md`;
+      mBody.value = p.body.replace(/^\n+/, '');
+      mDelete.classList.remove('invisible');
+      mCreateFields.classList.add('hidden');
+      mEditFields.classList.remove('hidden');
+      mEditCategory.textContent = `${CATEGORY_EMOJI[p.category]} ${CATEGORY_LABEL[p.category]}`;
+      mMtime.textContent = fmtDate(new Date(p.mtime).toISOString());
+      mStale.textContent = staleText(p.days_since_touched);
+      const rawColor = (p.frontmatter || {}).color;
+      mColor = (typeof rawColor === 'string' && COLOR_KEYS.includes(rawColor.toLowerCase()))
+        ? rawColor.toLowerCase() : null;
+      renderColorSwatches();
+      renderFmFields(p);
+      switchTab('edit');
+      modal.classList.remove('hidden');
+      setTimeout(() => mTitle.focus(), 60);
+    }
+
+    function openModalCreate() {
+      modalMode = 'create';
+      modalFile = null;
+      mTitle.value = '';
+      mMeta.textContent = '(nuevo)';
+      mBody.value = '';
+      mDelete.classList.add('invisible');
+      mCreateFields.classList.remove('hidden');
+      mEditFields.classList.add('hidden');
+      mSlug.value = '';
+      createCategory = 'personal';
+      renderCategoryPills();
+      switchTab('edit');
+      modal.classList.remove('hidden');
+      setTimeout(() => mTitle.focus(), 60);
+    }
+
+    function openModal(file) {
+      if (file) openModalView(file);
+      else openModalCreate();
+    }
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      modalFile = null;
+    }
+
+    document.getElementById('m-close').addEventListener('click', closeModal);
+    document.getElementById('m-cancel').addEventListener('click', closeModal);
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        openModalCreate();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !modal.classList.contains('hidden')) {
+        e.preventDefault();
+        document.getElementById('m-save').click();
+      }
+    });
+
+    document.getElementById('new-project-btn').addEventListener('click', openModalCreate);
+
+    // ── Save ────────────────────────────────────────────────────────────
+    document.getElementById('m-save').addEventListener('click', async () => {
+      if (!mTitle.value.trim()) {
+        toast('Title is required', 'error');
+        return;
+      }
+      try {
+        if (modalMode === 'create') {
+          const res = await fetch('/api/projects', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: mTitle.value.trim(),
+              category: createCategory,
+              slug: mSlug.value.trim() || undefined,
+            }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const created = await res.json();
+          // Si hay body, hago PATCH inmediato. Sino, el stub queda con solo el H1.
+          if (mBody.value.trim()) {
+            await fetch(`/api/projects/${encodeURIComponent(created.file)}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ body: mBody.value }),
+            });
+          }
+          toast('Project created', 'success');
+        } else {
+          // Update: recoger frontmatter editado del sidebar
+          const fmPatch = {};
+          mFmFields.querySelectorAll('[data-fm-field]').forEach(inp => {
+            const k = inp.dataset.fmField;
+            if (k === 'type' || k === 'updated') return; // managed
+            const v = inp.value.trim();
+            fmPatch[k] = v === '' ? null : v;
+          });
+          // Color va aparte del CATEGORY_FIELDS (es cross-cutting, no per-category).
+          fmPatch.color = mColor;
+          const res = await fetch(`/api/projects/${encodeURIComponent(modalFile)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body: mBody.value, frontmatter: fmPatch }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          toast('Project saved', 'success');
+        }
+        closeModal();
+        await reloadProjects();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+
+    mDelete.addEventListener('click', async () => {
+      if (!modalFile) return;
+      if (!confirm(`Delete "${mTitle.value}"?\n\nThis removes the file from your vault. Cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(modalFile)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+        toast('Project deleted', 'success');
+        closeModal();
+        await reloadProjects();
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
+    });
+
+    async function reloadProjects() {
+      const res = await fetch('/api/projects?full=1');
+      const data = await res.json();
+      projects = data.projects ?? [];
+      renderCatFilters();
+      renderCards();
+    }
+
+    // ── Toast ───────────────────────────────────────────────────────────
+    function toast(msg, kind) {
+      const c = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const color = kind === 'error'
+        ? 'bg-rose-600 text-white'
+        : 'bg-emerald-600 text-white';
+      el.className = `pointer-events-auto ${color} px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-fade-in`;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    // ── Init ────────────────────────────────────────────────────────────
+    renderCatFilters();
+    renderCards();
+  </script>
+</Layout>

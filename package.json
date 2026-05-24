@@ -1,0 +1,38 @@
+{
+  "name": "klaudban",
+  "type": "module",
+  "version": "0.2.0",
+  "description": "A self-hosted markdown kanban built for AI agents. Each task is a .md in your vault, Claude-ready out of the box (and works fine standalone). Obsidian-compatible.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "start": "node ./dist/server/entry.mjs"
+  },
+  "keywords": [
+    "kanban",
+    "markdown",
+    "obsidian",
+    "vault",
+    "self-hosted",
+    "claude",
+    "claude-code",
+    "agents",
+    "astro"
+  ],
+  "dependencies": {
+    "@astrojs/node": "^8.3.4",
+    "@astrojs/tailwind": "^5.1.5",
+    "astro": "^4.16.19",
+    "js-yaml": "^4.1.0",
+    "marked": "^18.0.4",
+    "tailwindcss": "^3.4.19"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "header": {
+    "title_fallback": "Vault",
+    "subtitle": "kanban en markdown",
+    "tabs": { "tasks": "Tareas", "projects": "Proyectos" },
+    "new_task": "Nueva tarea",
+    "new_task_short": "Nueva",
+    "new_project": "Nuevo proyecto",
+    "new_project_short": "Nuevo",
+    "theme_toggle": "Cambiar tema",
+    "notifications": "Ver notificaciones"
+  },
+  "columns": {
+    "pending": "Por hacer",
+    "doing": "En curso",
+    "blocked": "Bloqueada",
+    "done": "Hechas",
+    "pending_review": "Por revisar"
+  },
+  "stats": {
+    "pending": "Por hacer",
+    "doing": "En curso",
+    "overdue": "Vencidas",
+    "today": "Hoy",
+    "filtering": "filtrando"
+  },
+  "filters": {
+    "search_tasks": "Buscar tareas…",
+    "search_projects": "Buscar proyectos…",
+    "clear": "Limpiar",
+    "project": "Proyecto",
+    "priority": "Prioridad",
+    "due": "Vence",
+    "category": "Categoría",
+    "remove": "Quitar filtro"
+  },
+  "due": {
+    "no_date": "sin fecha",
+    "overdue_by": "venció hace {n}d",
+    "due_today": "vence hoy",
+    "tomorrow": "mañana",
+    "in_days": "en {n}d",
+    "this_week": "Esta semana"
+  },
+  "priority": {
+    "critical": "Crítica",
+    "high": "Alta",
+    "normal": "Normal",
+    "low": "Baja"
+  },
+  "status": {
+    "pending": "Por hacer",
+    "doing": "En curso",
+    "blocked": "Bloqueada",
+    "pending_review": "Por revisar",
+    "done": "Hecha"
+  },
+  "color": {
+    "yellow": "Amarillo",
+    "green": "Verde",
+    "blue": "Azul",
+    "purple": "Morado",
+    "pink": "Rosa",
+    "gray": "Gris",
+    "none": "Sin color",
+    "inherited_from_project": "Heredado del proyecto",
+    "override_project": "Override del default del proyecto ({label})",
+    "inherit_hint": "Las tarjetas de este proyecto sin color propio heredan este color."
+  },
+  "modal": {
+    "labels": {
+      "status":     "Estado",
+      "priority":   "Prioridad",
+      "color":      "Color",
+      "due":        "Vence",
+      "project":    "Proyecto",
+      "blocked_by": "Bloqueada por",
+      "body":       "Cuerpo",
+      "preview":    "Vista previa"
+    },
+    "title_placeholder": "¿Qué hay que hacer?",
+    "project_title_placeholder": "Título del proyecto",
+    "preview": "Vista previa",
+    "edit": "Editar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Borrar",
+    "copy_prompt": "Copiar prompt",
+    "change_color": "Cambiar color",
+    "blocked_by_placeholder": "razón / dependencia",
+    "slug_placeholder": "se genera del título",
+    "delete_confirm": "¿Borrar \"{title}\"?\n\nElimina el archivo del vault. No se puede deshacer.",
+    "title_required": "El título es obligatorio",
+    "no_title": "La tarea no tiene título",
+    "moved_to": "Movida a {label}",
+    "task_created": "Tarea creada",
+    "task_deleted": "Tarea borrada",
+    "changes_saved": "Cambios guardados",
+    "project_created": "Proyecto creado",
+    "project_saved": "Proyecto guardado",
+    "project_deleted": "Proyecto borrado",
+    "prompt_copied": "Prompt copiado",
+    "copy_failed": "No se pudo copiar al portapapeles",
+    "save_order_failed": "No se pudo guardar el orden: {err}"
+  },
+  "card": {
+    "no_due_date_hint": "sin fecha",
+    "nothing_here": "nada por aquí",
+    "show_older": "Ver anteriores",
+    "only_today": "Solo hoy",
+    "show_older_tip": "Mostrar también las terminadas en días anteriores",
+    "only_today_tip": "Mostrar solo las terminadas hoy",
+    "new_task_in_project": "Nueva tarea en este proyecto",
+    "add_task_in_column": "Agregar tarea en esta columna",
+    "in_review_since": "En revisión desde",
+    "working_since": "Trabajando desde"
+  },
+  "projects": {
+    "hero_total": "Total",
+    "hero_recent": "Recientes (≤7d)",
+    "hero_stale": "En olvido (>30d)",
+    "no_in_category": "Sin proyectos en esta categoría.",
+    "no_recent_activity": "Sin actividad reciente",
+    "touched_today": "tocado hoy",
+    "untouched_days": "sin tocar {n}d",
+    "updated_label": "Actualizado:",
+    "description_placeholder": "Descripción del proyecto en markdown…"
+  },
+  "notifications": {
+    "panel_title": "Notificaciones",
+    "clear": "Limpiar",
+    "enable_system": "Activar notificaciones del sistema",
+    "no_recent": "Sin actividad reciente",
+    "hint_unsupported": "Tu navegador no soporta notificaciones del sistema. Solo verás los toasts en la campana.",
+    "hint_denied_insecure": "Bloqueado: el sitio no se sirve por HTTPS. Solo verás los toasts en la campana.",
+    "hint_denied": "Bloqueado por el navegador. Cambiá los permisos del sitio para permitirlas.",
+    "hint_default_secure": "Vas a recibir un popup del sistema cada vez que Claude empiece o termine, aunque el tab esté en background.",
+    "hint_default_insecure": "Tu navegador puede bloquear el permiso porque el sitio no es HTTPS, pero intentalo igual.",
+    "labels": {
+      "start": "Trabajando",
+      "review": "Por revisar",
+      "archived": "Archivada",
+      "stopped": "Detenida"
+    },
+    "toast": {
+      "start": "Claude empezó: {title}",
+      "review": "Claude terminó: {title} · por revisar",
+      "archived": "Claude archivó: {title}",
+      "stopped": "Claude detuvo: {title}"
+    },
+    "native": {
+      "start": "Claude empezó una tarea",
+      "review": "Claude terminó · por revisar",
+      "archived": "Claude archivó una tarea",
+      "stopped": "Claude detuvo una tarea"
+    }
+  }
+}
