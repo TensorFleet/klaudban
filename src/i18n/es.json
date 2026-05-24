@@ -76,8 +76,11 @@
       "due":        "Vence",
       "project":    "Proyecto",
       "blocked_by": "Bloqueada por",
-      "body":       "Cuerpo",
-      "preview":    "Vista previa"
+      "body":       "Notas / subtareas",
+      "preview":    "Vista previa",
+      "body_placeholder": "- [ ] Subtarea 1\n- [ ] Subtarea 2\n\nNotas libres en markdown.\nEmbeds Obsidian: ![[archivo.png]]",
+      "delete_permanent": "Borrar permanentemente",
+      "delete_confirm":   "¿Borrar \"{title}\" permanentemente?\n\nElimina el archivo del vault. No se puede deshacer."
     },
     "title_placeholder": "¿Qué hay que hacer?",
     "project_title_placeholder": "Título del proyecto",
@@ -122,8 +125,12 @@
     "hero_stale": "En olvido (>30d)",
     "no_in_category": "Sin proyectos en esta categoría.",
     "no_recent_activity": "Sin actividad reciente",
+    "no_tasks_chip": "Sin tareas",
+    "no_tasks_card": "sin tareas",
+    "tasks_one": "{n} tarea",
+    "tasks_many": "{n} tareas",
     "touched_today": "tocado hoy",
-    "untouched_days": "sin tocar {n}d",
+    "untouched_days": "sin tocar {n}",
     "updated_label": "Actualizado:",
     "description_placeholder": "Descripción del proyecto en markdown…"
   },

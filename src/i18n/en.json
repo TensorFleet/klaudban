@@ -76,8 +76,11 @@
       "due":        "Due",
       "project":    "Project",
       "blocked_by": "Blocked by",
-      "body":       "Body",
-      "preview":    "Preview"
+      "body":       "Notes / subtasks",
+      "preview":    "Preview",
+      "body_placeholder": "- [ ] Subtask 1\n- [ ] Subtask 2\n\nFree-form notes in markdown.\nObsidian embeds: ![[file.png]]",
+      "delete_permanent": "Delete permanently",
+      "delete_confirm":   "Delete \"{title}\" permanently?\n\nThis removes the file from your vault. Cannot be undone."
     },
     "title_placeholder": "What needs doing?",
     "project_title_placeholder": "Project title",
@@ -122,8 +125,12 @@
     "hero_stale": "Stale (>30d)",
     "no_in_category": "No projects in this category.",
     "no_recent_activity": "No recent activity",
+    "no_tasks_chip": "No tasks",
+    "no_tasks_card": "no tasks",
+    "tasks_one": "{n} task",
+    "tasks_many": "{n} tasks",
     "touched_today": "touched today",
-    "untouched_days": "untouched {n}d",
+    "untouched_days": "untouched {n}",
     "updated_label": "Updated:",
     "description_placeholder": "Project description in markdown…"
   },

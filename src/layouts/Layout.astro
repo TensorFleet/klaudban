@@ -20,13 +20,18 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <!-- Anti-flash: aplica el tema ANTES del primer paint, leyendo localStorage o prefers-color-scheme. -->
+  <!-- Anti-flash: apply theme BEFORE first paint. Priority:
+       1. ?theme=dark|light query param (bookmarkable + useful for screenshots)
+       2. localStorage `theme` value
+       3. prefers-color-scheme media query -->
   <script is:inline>
     (function() {
       try {
-        const saved = localStorage.getItem('theme');
-        const sys = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const dark = saved === 'dark' || (saved == null && sys);
+        const params = new URLSearchParams(location.search);
+        const forced = params.get('theme');
+        const saved  = localStorage.getItem('theme');
+        const sys    = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark   = forced === 'dark' || (!forced && (saved === 'dark' || (saved == null && sys)));
         if (dark) document.documentElement.classList.add('dark');
       } catch {}
     })();

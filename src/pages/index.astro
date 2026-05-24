@@ -141,14 +141,14 @@ const clientConfig  = {
 
           <section class="p-5 sm:p-6 flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Notas / subtareas</label>
+              <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('modal.labels.body')}</label>
               <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 text-xs font-semibold">
                 <button id="tab-edit"    class="px-3 py-1 rounded-md transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">Edit</button>
                 <button id="tab-preview" class="px-3 py-1 rounded-md transition-colors text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">Preview</button>
               </div>
             </div>
             <textarea id="m-body" rows="14"
-                      placeholder="- [ ] Subtarea 1&#10;- [ ] Subtarea 2&#10;&#10;Notas libres en markdown.&#10;Embeds Obsidian: ![[archivo.png]]"
+                      placeholder={t('modal.labels.body_placeholder')}
                       class="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-mono leading-relaxed resize-y bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all scrollbar-thin dark:placeholder-slate-500"></textarea>
             <div id="m-preview" class="hidden border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-800 prose-task overflow-auto scrollbar-thin" style="min-height: 14rem;"></div>
           </section>
@@ -158,7 +158,7 @@ const clientConfig  = {
       <div class="flex items-center justify-between gap-2 px-6 py-4 bg-slate-50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800">
         <button id="m-delete" class="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 font-semibold px-3 py-2 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors flex items-center gap-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-          Delete permanente
+          {t('modal.labels.delete_permanent')}
         </button>
         <div class="flex gap-2">
           <button id="m-cancel" class="text-sm px-4 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
@@ -1429,7 +1429,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
     });
     mDelete.addEventListener('click', async () => {
       if (!modalFile) return;
-      if (!confirm(`Delete permanentemente "${mTitle.value}"?\n\nThis removes the file from your vault. Cannot be undone.`)) return;
+      if (!confirm(MSG.modal.labels.delete_confirm.replace('{title}', mTitle.value))) return;
       try {
         const res = await fetch(`/api/tasks?file=${encodeURIComponent(modalFile)}`, { method: 'DELETE' });
         if (!res.ok) throw new Error(await res.text());
@@ -1484,17 +1484,27 @@ If the task was already in "pending-review" and you're picking it back up (revis
     renderBoard();
     updateClearBtn();
 
-    // Deep-link desde /proyectos: el botón "+" de una card de proyecto navega
-    // a /?newtask=<slug>. Abrimos el modal de create con ese project pre-puesto
-    // y limpiamos el query string para que recargar no vuelva a abrirlo.
+    // Deep-links via query string:
+    //   ?newtask=<slug>   → opens the create-task modal with project pre-filled
+    //                       (used by the "+" button on a project card in /proyectos)
+    //   ?open=<filename>  → opens the edit modal for an existing task
+    //                       (handy for bookmarks, demos, screenshots)
+    // Either param is consumed and removed via replaceState so a reload
+    // doesn't re-trigger the modal.
     (function() {
       try {
         const params = new URLSearchParams(window.location.search);
         const newTaskFor = params.get('newtask');
+        const openFile   = params.get('open');
         if (newTaskFor) {
           openModal(null, { project: newTaskFor });
+        } else if (openFile) {
+          openModal(openFile);
+        }
+        if (newTaskFor || openFile) {
           const url = new URL(window.location.href);
           url.searchParams.delete('newtask');
+          url.searchParams.delete('open');
           history.replaceState(null, '', url.toString());
         }
       } catch {}

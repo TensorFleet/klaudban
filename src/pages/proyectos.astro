@@ -154,7 +154,7 @@ const CATEGORY_META: Record<string, { emoji: string; ring: string; bg: string }>
     </div>
   </div>
 
-  <script is:inline define:vars={{ initialProjects: projects, categoriesMeta: CATEGORY_META, categoryLabels: CATEGORY_LABEL, categoryFields: CATEGORY_FIELDS, categoryKeys: CATEGORIES }}>
+  <script is:inline define:vars={{ initialProjects: projects, categoriesMeta: CATEGORY_META, categoryLabels: CATEGORY_LABEL, categoryFields: CATEGORY_FIELDS, categoryKeys: CATEGORIES, MSG: MESSAGES }}>
     // OJO: define:vars implica is:inline → NO usar sintaxis TypeScript aquí.
 
     // Categorys y metadata vienen del server (CONFIG.projects.categories).
@@ -211,8 +211,8 @@ const CATEGORY_META: Record<string, { emoji: string; ring: string; bg: string }>
     // Texto completo para el badge: invierte el verbo cuando se tocó hoy.
     // "sin tocar hoy" leía como negación; lo correcto es "tocado hoy".
     function staleText(days) {
-      if (days === 0) return 'tocado hoy';
-      return `sin tocar ${staleLabel(days)}`;
+      if (days === 0) return MSG.projects.touched_today;
+      return MSG.projects.untouched_days.replace('{n}', staleLabel(days));
     }
     function fmtDate(iso) {
       if (!iso) return '—';
@@ -240,7 +240,7 @@ const CATEGORY_META: Record<string, { emoji: string; ring: string; bg: string }>
         noTasksActive
           ? 'bg-brand-600 dark:bg-brand-500 text-white shadow-sm'
           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-      }">📋 Sin tareas <span class="opacity-60">${noTasksCount}</span></button>`;
+      }">📋 ${MSG.projects.no_tasks_chip} <span class="opacity-60">${noTasksCount}</span></button>`;
       wrap.innerHTML = catChips + noTasksChip;
       wrap.querySelectorAll('[data-cat]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -280,8 +280,8 @@ const CATEGORY_META: Record<string, { emoji: string; ring: string; bg: string }>
 
       // Badge de tareas: solo si hay alguna, para no llenar la card de ceros.
       const tasksBadge = p.tasks_open > 0
-        ? `<span class="text-[10px] font-semibold text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-1 rounded-full ring-1 ring-brand-200 dark:ring-brand-800/50">${p.tasks_open} ${p.tasks_open === 1 ? 'tarea' : 'tareas'}</span>`
-        : `<span class="text-[10px] font-medium text-slate-400 dark:text-slate-500 italic">sin tareas</span>`;
+        ? `<span class="text-[10px] font-semibold text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-1 rounded-full ring-1 ring-brand-200 dark:ring-brand-800/50">${(p.tasks_open === 1 ? MSG.projects.tasks_one : MSG.projects.tasks_many).replace('{n}', p.tasks_open)}</span>`
+        : `<span class="text-[10px] font-medium text-slate-400 dark:text-slate-500 italic">${MSG.projects.no_tasks_card}</span>`;
 
       return `<article data-file="${esc(p.file)}" class="group relative bg-white dark:bg-slate-800 rounded-xl p-4 ring-1 ring-slate-200 dark:ring-slate-700 hover:ring-brand-300 dark:hover:ring-brand-700 hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer">
         <button data-new-task-for="${esc(p.file)}" title="New task in this project"
