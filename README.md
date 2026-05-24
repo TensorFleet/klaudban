@@ -214,4 +214,6 @@ Pre-built single-file binaries are intentionally not planned; Astro SSR needs No
 
 ## License
 
-MIT.
+Released under the [MIT License](./LICENSE). You can use, modify, and redistribute Klaudban as long as the copyright notice and the license text travel with the code. No warranty.
+
+The mascot animations in `public/claude-*.webm` are adapted from [Codrops' Claude mascot reverse-engineering](https://tympanus.net/codrops/2026/05/05/reverse-engineering-claude-ais-mascot-animations-with-svg-and-gsap/); see [Credits](#credits) above.
