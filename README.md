@@ -149,6 +149,8 @@ Files in `vault/tasks/done/` are treated as "done" regardless of frontmatter. Fi
 
 ## Claude integration (optional)
 
+> For the agent-facing reference — endpoints, a copy-pasteable system prompt, and the `op=done` vs `op=review` rule — see [AGENTS.md](./AGENTS.md). This section is the human-facing version.
+
 When `claude.enabled` is `true` and `claude.apiBaseUrl` is set, each task card and modal show a "copy prompt" button. The prompt contains three `curl`s:
 
 ```
