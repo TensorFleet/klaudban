@@ -2,6 +2,8 @@
 
 A self-hosted **markdown kanban built for AI agents**. Every task is a `.md` file in your vault. No database, no accounts, no SaaS. Claude-ready out of the box, works fine standalone.
 
+![Klaudban board view](./docs/board.png)
+
 Each card can copy a prompt with three `curl`s that an agent runs to mark the task as in-progress, finished, or pending-review. The board reflects the agent's progress in real time. Or just use it as a plain markdown kanban with the Claude integration turned off.
 
 ## Obsidian-compatible
