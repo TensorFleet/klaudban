@@ -1,5 +1,5 @@
 ---
-import { CONFIG } from '../lib/config';
+import { CONFIG, HEADER_TITLE } from '../lib/config';
 import { t, MESSAGES, LOCALE } from '../i18n';
 interface Props {
   title?: string;
@@ -7,7 +7,7 @@ interface Props {
   active?: 'tasks' | 'projects';
 }
 const { title = t('header.tabs.tasks'), active = 'tasks' } = Astro.props;
-const headerTitle   = CONFIG.ui.title || t('header.title_fallback');
+const headerTitle   = HEADER_TITLE;
 const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
 ---
 <!doctype html>

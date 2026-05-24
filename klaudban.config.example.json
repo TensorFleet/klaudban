@@ -6,7 +6,7 @@
   },
   "ui": {
     "timezone": "UTC",
-    "title":    "Vault",
+    "title":    "",
     "locale":   "en"
   },
   "claude": {

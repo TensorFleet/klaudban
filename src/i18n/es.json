@@ -1,7 +1,7 @@
 {
   "footer": "Klaudban · kanban en markdown · ⌘+N para nueva tarea",
   "header": {
-    "title_fallback": "Vault",
+    "title_fallback": "Klaudban",
     "subtitle": "kanban en markdown",
     "tabs": { "tasks": "Tareas", "projects": "Proyectos" },
     "new_task": "Nueva tarea",

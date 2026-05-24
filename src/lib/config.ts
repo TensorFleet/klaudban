@@ -64,7 +64,7 @@ const DEFAULTS: AppConfig = {
   },
   ui: {
     timezone: 'UTC',
-    title:    'Vault',
+    title:    '',          // empty = derive from tasksDir parent folder name
     locale:   'en',
   },
   claude: {
@@ -108,6 +108,23 @@ const fileConfig = loadFromFile();
 export const CONFIG: AppConfig = deepMerge(DEFAULTS, fileConfig);
 
 export const VAULT_TASKS   = resolve(process.cwd(), CONFIG.vault.tasksDir);
+
+/**
+ * Derive a human-friendly title for the header. Priority:
+ *   1. `ui.title` from config (if explicitly set)
+ *   2. the parent folder of `tasksDir` (e.g. `vault/tasks` → "vault", a real
+ *      Obsidian vault at `/Users/me/MyVault/tasks` → "MyVault")
+ *   3. fallback to "Klaudban"
+ *
+ * Using the folder name as default makes the header reflect the user's vault
+ * without them having to configure anything — point `tasksDir` at your real
+ * Obsidian directory and the header takes its name automatically.
+ */
+function deriveVaultName(): string {
+  const segments = VAULT_TASKS.replace(/\/+$/, '').split('/');
+  return segments[segments.length - 2] || '';
+}
+export const HEADER_TITLE: string = CONFIG.ui.title || deriveVaultName() || 'Klaudban';
 export const VAULT_PROJECTS = resolve(process.cwd(), CONFIG.vault.projectsDir);
 export const VAULT_EMBEDS   = resolve(process.cwd(), CONFIG.vault.embedsDir);
 export const VAULT_DONE     = join(VAULT_TASKS, 'done');

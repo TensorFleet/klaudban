@@ -90,7 +90,7 @@ cp klaudban.config.example.json klaudban.config.json
   },
   "ui": {
     "timezone": "UTC",                   // IANA tz for "today" / "due today" filters
-    "title":    "Vault"                  // text in the header
+    "title":    ""                     // empty → derived from tasksDir parent folder; e.g. "./vault/tasks" → "vault". Fallback "Klaudban".
   },
   "claude": {
     "enabled":    false,                 // true to show the "copy prompt" buttons and the bell
