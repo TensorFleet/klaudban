@@ -14,7 +14,7 @@ COPY public ./public
 COPY src ./src
 # The example config is bundled so missing-config doesn't break first-run; the
 # actual user config gets mounted from outside at runtime (see docker-compose).
-COPY tareas.config.example.json ./tareas.config.json
+COPY klaudban.config.example.json ./klaudban.config.json
 RUN npm run build
 
 # ── runtime stage ────────────────────────────────────────────────────────
@@ -27,12 +27,12 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
-# A baseline config gets baked in; the user mounts theirs at /app/tareas.config.json
+# A baseline config gets baked in; the user mounts theirs at /app/klaudban.config.json
 # to override (see README + docker-compose).
-COPY --from=builder /app/tareas.config.json ./tareas.config.json
+COPY --from=builder /app/klaudban.config.json ./klaudban.config.json
 # Empty vault skeleton so first boot doesn't crash with missing dirs. Users
 # mount their real vault over /app/vault.
-RUN mkdir -p vault/tareas/done vault/projects vault/embeds
+RUN mkdir -p vault/tasks/done vault/projects vault/embeds
 
 EXPOSE 4321
 CMD ["node", "./dist/server/entry.mjs"]

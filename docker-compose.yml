@@ -20,8 +20,8 @@ services:
       # always reads/writes to /app/vault — keep it that way.
       - ./vault:/app/vault
       # Optional: mount your own config to override the bundled defaults.
-      # If you skip this, the bundled tareas.config.example.json is used.
-      - ./tareas.config.json:/app/tareas.config.json:ro
+      # If you skip this, the bundled klaudban.config.example.json is used.
+      - ./klaudban.config.json:/app/klaudban.config.json:ro
     environment:
       HOST: "0.0.0.0"
       PORT: "4321"

@@ -175,7 +175,7 @@ const clientConfig  = {
     // recargar (F5 / Syncthing reload / restart del server). Se cargan acá
     // y se reescriben en updateClearBtn(), que ya se llama después de cada
     // mutación de filters.
-    const FILTERS_KEY = 'tareas-ui:filters:v1';
+    const FILTERS_KEY = 'klaudban:filters:v1';
     function loadFilters() {
       const fallback = { search: '', project: '', priority: '', due: '', status: '' };
       try {
@@ -199,7 +199,7 @@ const clientConfig  = {
     // Status del toggle "ver hechas anteriores" — default false (solo hoy).
     // Persiste aparte de filters porque no es un filtro de la cuadrícula sino
     // una vista específica del bucket "Hechas".
-    const DONE_SHOW_ALL_KEY = 'tareas-ui:done:showAll';
+    const DONE_SHOW_ALL_KEY = 'klaudban:done:showAll';
     let doneShowAll = (function() {
       try { return localStorage.getItem(DONE_SHOW_ALL_KEY) === '1'; } catch { return false; }
     })();

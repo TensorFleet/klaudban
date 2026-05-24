@@ -2,7 +2,7 @@
  * Projects: vault → CRUD.
  *
  * Source: `<projectsDir>/<categoryKey>/*.md` where `projectsDir` and the
- * available category keys both come from `tareas.config.json` (see
+ * available category keys both come from `klaudban.config.json` (see
  * `config.ts` for defaults). Each file is a project doc with frontmatter
  * whose shape depends on which category's `fields` it belongs to.
  *
@@ -44,8 +44,8 @@ export interface Project {
   body_html: string;
   mtime: number;             // ms epoch
   days_since_touched: number;
-  tasks_open: number;        // tareas activas (pending/doing/blocked) que apuntan a este proyecto
-  tasks_done: number;        // tareas done que apuntan a este proyecto
+  tasks_open: number;        // active tasks (pending/doing/blocked) pointing at this project
+  tasks_done: number;        // done tasks pointing at this project
 }
 
 const FRONT_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -123,8 +123,8 @@ function parseFile(category: Category, filename: string): Project | null {
   };
 }
 
-// Cuenta tareas por proyecto (slug = filename sin .md, igual que el campo
-// `project:` del frontmatter de tareas). Devuelve un mapa { slug → { open, done } }.
+// Counts tasks per project (slug = filename without .md, same as the
+// `project:` frontmatter field on tasks). Returns { slug → { open, done } }.
 function countTasksByProject(): Record<string, { open: number; done: number }> {
   const counts: Record<string, { open: number; done: number }> = {};
   for (const t of listAllTasks()) {
@@ -157,7 +157,7 @@ export function listAll(): Project[] {
     const c = counts[p.file];
     if (c) { p.tasks_open = c.open; p.tasks_done = c.done; }
   }
-  // Más recientes primero
+  // Newest first
   return out.sort((a, b) => b.mtime - a.mtime);
 }
 
@@ -213,7 +213,7 @@ export interface ProjectCreateInput {
 function defaultFrontmatterFor(category: Category, today: string): Record<string, unknown> {
   // Sembramos el frontmatter con `type` y `updated`, más una entrada vacía por
   // cada campo declarado en CONFIG.projects.categories[].fields. El usuario
-  // los completa en el modal del editor de proyectos.
+  // The user fills them in the project editor modal.
   const base: Record<string, unknown> = {
     type: CATEGORY_TYPE[category],
     updated: today,

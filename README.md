@@ -25,11 +25,11 @@ Drop-in over an existing Obsidian vault: the tasks and project files are regular
 
 ## Features
 
-- **Markdown-first.** Each task is `vault/tareas/YYYY-MM-DD Title.md` with YAML frontmatter (`status`, `priority`, `due`, `project`, etc.). Edit them in any editor or by hand. Sync via Syncthing / Dropbox / iCloud — anything that propagates files works.
+- **Markdown-first.** Each task is `vault/tasks/YYYY-MM-DD Title.md` with YAML frontmatter (`status`, `priority`, `due`, `project`, etc.). Edit them in any editor or by hand. Sync via Syncthing / Dropbox / iCloud — anything that propagates files works.
 - **Four columns + a yellow sub-section.** *To do*, *In progress*, *Blocked*, *Done*. A "Pending review" strip above *In progress* shows what the agent finished but still needs human action.
 - **Projects view.** A second tab groups projects by configurable category (default: *Personal* and *Work*) with freshness badges (based on `mtime`, so it shows real activity regardless of whether you use Claude or not).
 - **Optional Claude integration.** When enabled, each card has a "copy prompt" button. The agent runs `op=start/done/review` `curl`s and the board updates within 5 seconds. When disabled, the bell and the copy buttons are hidden — it works as a plain markdown Kanban.
-- **No env vars.** A single optional `tareas.config.json` controls vault paths, timezone, header title, project categories, and the Claude integration.
+- **No env vars.** A single optional `klaudban.config.json` controls vault paths, timezone, header title, project categories, and the Claude integration.
 
 ## Quick start
 
@@ -41,7 +41,7 @@ cd klaudban
 docker compose up -d
 ```
 
-Open <http://localhost:4321/>. Tasks go in `./vault/tareas/` (mounted into the container). Edit `tareas.config.json` to point at your real Obsidian vault and re-up.
+Open <http://localhost:4321/>. Tasks go in `./vault/tasks/` (mounted into the container). Edit `klaudban.config.json` to point at your real Obsidian vault and re-up.
 
 ### With Node.js installed
 
@@ -52,7 +52,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:4321/`. The app reads tasks from `./vault/tareas/` by default. Edit the sample task or add new ones.
+Open `http://localhost:4321/`. The app reads tasks from `./vault/tasks/` by default. Edit the sample task or add new ones.
 
 To build for production:
 
@@ -75,16 +75,16 @@ If anything fails, the most common reason is the wrong Node version. Run `node -
 
 ## Configuration
 
-All app configuration lives in `tareas.config.json` at the project root. The file is **optional**; if absent, defaults apply. Copy `tareas.config.example.json` to start:
+All app configuration lives in `klaudban.config.json` at the project root. The file is **optional**; if absent, defaults apply. Copy `klaudban.config.example.json` to start:
 
 ```bash
-cp tareas.config.example.json tareas.config.json
+cp klaudban.config.example.json klaudban.config.json
 ```
 
 ```jsonc
 {
   "vault": {
-    "tareasDir":   "./vault/tareas",     // where tasks live (.md files)
+    "tasksDir":   "./vault/tasks",     // where tasks live (.md files)
     "projectsDir": "./vault/projects",   // where project docs live
     "embedsDir":   "./vault/embeds"      // images/audio/video referenced from tasks
   },
@@ -108,7 +108,7 @@ cp tareas.config.example.json tareas.config.json
 Pointing the app at your Obsidian vault is just:
 
 ```jsonc
-{ "vault": { "tareasDir": "/Users/you/Documents/MyVault/tasks", "projectsDir": "/Users/you/Documents/MyVault/projects", "embedsDir": "/Users/you/Documents/MyVault/attachments" } }
+{ "vault": { "tasksDir": "/Users/you/Documents/MyVault/tasks", "projectsDir": "/Users/you/Documents/MyVault/projects", "embedsDir": "/Users/you/Documents/MyVault/attachments" } }
 ```
 
 ### Project categories
@@ -145,7 +145,7 @@ Task body in markdown. Supports subtasks:
 Obsidian-style embeds work too: `![[image.png]]` (served from `embedsDir`).
 ```
 
-Files in `vault/tareas/done/` are treated as "done" regardless of frontmatter. Files in the root are active.
+Files in `vault/tasks/done/` are treated as "done" regardless of frontmatter. Files in the root are active.
 
 ## Claude integration (optional)
 
@@ -183,7 +183,18 @@ Astro 4 SSR + `@astrojs/node` + Tailwind + `js-yaml` + `marked`. No database —
 
 ## Security note
 
-Klaudban has **no authentication**. The API can read and write any file inside the configured `vault.*` directories. Don't expose it to the public internet directly — run it on `localhost`, behind Tailscale / a VPN, or behind a reverse proxy with auth (Caddy with `basic_auth`, Authelia, Cloudflare Access). Anyone who can reach the port can edit and delete your tasks.
+Klaudban ships with **no authentication** and **plain HTTP**. The combination matters:
+
+- **No auth.** The API can read and write any file inside the configured `vault.*` directories. Anyone who can reach the port can edit and delete your tasks.
+- **No TLS.** Requests travel in cleartext. On a hostile network, anyone sniffing traffic can see and modify them.
+
+Safe ways to run it:
+
+- **Localhost only.** Bind to `127.0.0.1` (the default `HOST` in the Docker image is `0.0.0.0` so the container is reachable from the host; override with `HOST=127.0.0.1` if you only want loopback). No TLS needed because there's no network in between.
+- **Behind Tailscale, WireGuard, or a VPN.** The tunnel already encrypts traffic between nodes end-to-end, so plain HTTP inside is fine. This is the typical "share your kanban between laptop and phone" setup.
+- **Behind a reverse proxy with TLS + auth.** Run Caddy / Traefik / nginx with `basic_auth`, Authelia, or Cloudflare Access in front. The proxy handles TLS and authentication; Klaudban itself listens on localhost.
+
+**Do not bind Klaudban directly to a public interface over plain HTTP.** There is no authentication, no rate limiting, no audit log — every file under your vault path is open to anyone who knows the URL.
 
 ## Roadmap
 

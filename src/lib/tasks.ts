@@ -1,12 +1,12 @@
 /**
  * Tasks: vault → board.
  *
- * Source: the directory configured by `vault.tareasDir` in `tareas.config.json`
- * (default `./vault/tareas`). Each `.md` file is a task.
+ * Source: the directory configured by `vault.tasksDir` in `klaudban.config.json`
+ * (default `./vault/tasks`). Each `.md` file is a task.
  *
  * Statuses:
  *   - pending / doing / blocked / pending-review: file in the tasks root, status in frontmatter
- *   - done: file in tareas/done/ (location is the source of truth, not frontmatter)
+ *   - done: file in tasks/done/ (location is the source of truth, not frontmatter)
  *
  * `pending-review` is the intermediate state set by `op=review`: the task stays
  * visible on the board (yellow sub-section above "In progress") waiting for the
@@ -30,7 +30,7 @@ import { join, basename } from 'node:path';
 import yaml from 'js-yaml';
 import { marked } from 'marked';
 import { getOne as getProjectDoc, updateProject } from './projects';
-import { CONFIG, VAULT_TAREAS, VAULT_DONE, VAULT_PROJECTS, VAULT_EMBEDS } from './config';
+import { CONFIG, VAULT_TASKS, VAULT_DONE, VAULT_PROJECTS, VAULT_EMBEDS } from './config';
 
 export { VAULT_EMBEDS };
 
@@ -230,7 +230,7 @@ function listDir(dir: string): Task[] {
 }
 
 export function listAll(): Task[] {
-  const active = listDir(VAULT_TAREAS);
+  const active = listDir(VAULT_TASKS);
   const done   = listDir(VAULT_DONE);
   return [...active, ...done];
 }
@@ -238,7 +238,7 @@ export function listAll(): Task[] {
 export function getOne(filename: string): Task | null {
   const safe = sanitizeFilename(filename);
   // Buscar primero en activas, luego en done
-  if (existsSync(join(VAULT_TAREAS, safe))) return parseFile(safe, VAULT_TAREAS);
+  if (existsSync(join(VAULT_TASKS, safe))) return parseFile(safe, VAULT_TASKS);
   if (existsSync(join(VAULT_DONE, safe)))   return parseFile(safe, VAULT_DONE);
   return null;
 }
@@ -323,12 +323,12 @@ export function createTask(input: TaskInput): Task {
   if (!input.title?.trim()) throw new Error('title required');
   const date = input.date ?? todayLocal();
   const filename = sanitizeFilename(`${date} ${input.title.trim()}.md`);
-  const fullPath = join(VAULT_TAREAS, filename);
+  const fullPath = join(VAULT_TASKS, filename);
   if (existsSync(fullPath)) throw new Error('archivo ya existe: ' + filename);
   const front = buildFrontmatter({ ...input, date }, date);
   const body  = input.body ?? `- [ ] ${input.title.trim()}\n`;
   writeFileSync(fullPath, front + '\n' + body, 'utf8');
-  const t = parseFile(filename, VAULT_TAREAS);
+  const t = parseFile(filename, VAULT_TASKS);
   if (!t) throw new Error('parse falló tras crear');
   touchProject(t.project);
   return t;
@@ -344,7 +344,7 @@ export function updateTask(
   if (!existing) throw new Error('tarea no existe: ' + safe);
 
   const inDone = existing.status === 'done';
-  const dir = inDone ? VAULT_DONE : VAULT_TAREAS;
+  const dir = inDone ? VAULT_DONE : VAULT_TASKS;
   const fullPath = join(dir, safe);
 
   const merged: TaskInput = {
@@ -395,8 +395,8 @@ export function moveToStatus(filename: string, status: Status): Task {
   const safe = sanitizeFilename(filename);
   const existing = getOne(safe);
   if (!existing) throw new Error('tarea no existe: ' + safe);
-  const fromDir = existing.status === 'done' ? VAULT_DONE : VAULT_TAREAS;
-  const toDir   = status === 'done' ? VAULT_DONE : VAULT_TAREAS;
+  const fromDir = existing.status === 'done' ? VAULT_DONE : VAULT_TASKS;
+  const toDir   = status === 'done' ? VAULT_DONE : VAULT_TASKS;
   if (status === 'done' && !existsSync(VAULT_DONE)) mkdirSync(VAULT_DONE, { recursive: true });
 
   // Reescribir frontmatter con nuevo status (excepto 'done' que no se persiste,
@@ -428,7 +428,7 @@ export function moveToStatus(filename: string, status: Status): Task {
 
 export function deleteTask(filename: string): void {
   const safe = sanitizeFilename(filename);
-  for (const dir of [VAULT_TAREAS, VAULT_DONE]) {
+  for (const dir of [VAULT_TASKS, VAULT_DONE]) {
     const p = join(dir, safe);
     if (existsSync(p)) { unlinkSync(p); return; }
   }

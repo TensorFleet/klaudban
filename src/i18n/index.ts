@@ -1,7 +1,7 @@
 /**
  * Lightweight i18n.
  *
- * Loads the messages bundle for the locale configured in `tareas.config.json`
+ * Loads the messages bundle for the locale configured in `klaudban.config.json`
  * (`ui.locale`, default `"en"`). The `t(key, vars?)` helper looks up a dot-path
  * (e.g. `"modal.save"`) and interpolates `{var}` placeholders.
  *

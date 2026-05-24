@@ -4,9 +4,9 @@ import { t, MESSAGES, LOCALE } from '../i18n';
 interface Props {
   title?: string;
   /** Active tab in the header. */
-  active?: 'tareas' | 'proyectos';
+  active?: 'tasks' | 'projects';
 }
-const { title = t('header.tabs.tasks'), active = 'tareas' } = Astro.props;
+const { title = t('header.tabs.tasks'), active = 'tasks' } = Astro.props;
 const headerTitle   = CONFIG.ui.title || t('header.title_fallback');
 const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
 ---
@@ -98,15 +98,15 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
       <!-- Tabs: Tasks | Projects -->
       <nav class="flex bg-slate-100 dark:bg-slate-800/80 rounded-xl p-1 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
         <a href="/" class={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
-          active === 'tareas'
+          active === 'tasks'
             ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
         }`}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>{t('header.tabs.tasks')}</span>
         </a>
-        <a href="/proyectos" class={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
-          active === 'proyectos'
+        <a href="/projects" class={`px-3 sm:px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+          active === 'projects'
             ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
         }`}>
@@ -146,13 +146,13 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
           <svg class="hidden dark:block" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
           <svg class="block dark:hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
-        {active === 'tareas' && (
+        {active === 'tasks' && (
           <button id="new-task-btn" class="group bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lift hover:shadow-card transition-all flex items-center gap-1.5">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-90 transition-transform duration-300"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span class="hidden sm:inline">{t('header.new_task')}</span><span class="sm:hidden">{t('header.new_task_short')}</span>
           </button>
         )}
-        {active === 'proyectos' && (
+        {active === 'projects' && (
           <button id="new-project-btn" class="group bg-gradient-to-br from-brand-500 to-brand-700 hover:from-brand-600 hover:to-brand-800 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lift hover:shadow-card transition-all flex items-center gap-1.5">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-90 transition-transform duration-300"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span class="hidden sm:inline">{t('header.new_project')}</span><span class="sm:hidden">{t('header.new_project_short')}</span>
@@ -196,8 +196,8 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
     // Tailscale Chromium/Safari bloquean — el popover muestra el motivo en el
     // CTA de permiso.
     (function() {
-      const STORE_KEY = 'tareas-ui:notifs:items';
-      const SEEN_KEY  = 'tareas-ui:notifs:lastSeen';
+      const STORE_KEY = 'klaudban:notifs:items';
+      const SEEN_KEY  = 'klaudban:notifs:lastSeen';
       const MAX_ITEMS = 50;
       const hasNotifAPI = typeof window !== 'undefined' && 'Notification' in window;
 

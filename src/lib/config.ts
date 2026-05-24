@@ -1,13 +1,13 @@
 /**
- * Config loader. Reads `tareas.config.json` (optional) from the CWD of the
+ * Config loader. Reads `klaudban.config.json` (optional) from the CWD of the
  * process. Everything is optional; missing fields fall back to defaults.
  *
  * NO env vars by design — all app configuration lives in a single versionable
  * (or gitignorable) file at the repo root.
  *
- * Schema example (see tareas.config.example.json):
+ * Schema example (see klaudban.config.example.json):
  *   {
- *     "vault":   { "tareasDir": "./vault/tareas", "projectsDir": "./vault/projects", "embedsDir": "./vault/embeds" },
+ *     "vault":   { "tasksDir": "./vault/tasks", "projectsDir": "./vault/projects", "embedsDir": "./vault/embeds" },
  *     "ui":      { "timezone": "UTC", "title": "Vault" },
  *     "claude":  { "enabled": false, "apiBaseUrl": "http://localhost:3004" },
  *     "projects": {
@@ -37,7 +37,7 @@ export interface CategoryConfig {
 
 export interface AppConfig {
   vault: {
-    tareasDir:   string;
+    tasksDir:   string;
     projectsDir: string;
     embedsDir:   string;
   };
@@ -58,7 +58,7 @@ export interface AppConfig {
 
 const DEFAULTS: AppConfig = {
   vault: {
-    tareasDir:   './vault/tareas',
+    tasksDir:   './vault/tasks',
     projectsDir: './vault/projects',
     embedsDir:   './vault/embeds',
   },
@@ -79,7 +79,7 @@ const DEFAULTS: AppConfig = {
   },
 };
 
-const CONFIG_FILENAME = 'tareas.config.json';
+const CONFIG_FILENAME = 'klaudban.config.json';
 
 function loadFromFile(): Partial<AppConfig> {
   try {
@@ -107,10 +107,10 @@ function deepMerge<T>(base: T, patch: Partial<T>): T {
 const fileConfig = loadFromFile();
 export const CONFIG: AppConfig = deepMerge(DEFAULTS, fileConfig);
 
-export const VAULT_TAREAS   = resolve(process.cwd(), CONFIG.vault.tareasDir);
+export const VAULT_TASKS   = resolve(process.cwd(), CONFIG.vault.tasksDir);
 export const VAULT_PROJECTS = resolve(process.cwd(), CONFIG.vault.projectsDir);
 export const VAULT_EMBEDS   = resolve(process.cwd(), CONFIG.vault.embedsDir);
-export const VAULT_DONE     = join(VAULT_TAREAS, 'done');
+export const VAULT_DONE     = join(VAULT_TASKS, 'done');
 
 // Derived from CONFIG.projects.categories — used everywhere instead of the
 // previous hardcoded enum.
