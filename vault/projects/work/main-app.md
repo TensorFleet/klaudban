@@ -1,6 +1,6 @@
 ---
 type: project-work
-updated: 2026-05-23
+updated: '2026-05-24'
 employer: Acme Corp
 path: /Users/you/work/main-app
 color: blue
