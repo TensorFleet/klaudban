@@ -19,6 +19,7 @@
  *   priority: critical|high|normal|low              default 'normal'
  *   due: YYYY-MM-DD        optional
  *   project: filename      optional, matches a file in projectsDir (no .md)
+ *   assignee: string       optional team member id (see config.users)
  *   blocked_by: text       optional, free text or wikilink
  *   color: <name>          optional banner color (see CARD_COLORS)
  *   claude_active: bool    set by op=start, cleared on op=done/review
@@ -59,6 +60,7 @@ export interface Task {
   date: string | null;   // creación
   due: string | null;
   project: string | null;
+  assignee: string | null;
   blocked_by: string | null;
   pos: number | null;    // orden manual dentro de columna (mayor = arriba)
   claude_active: boolean; // true mientras Claude trabaja en la tarea
@@ -166,6 +168,7 @@ function parseFile(filename: string, dir: string): Task | null {
     date:    nullableString(frontmatter.date),
     due:     nullableString(frontmatter.due),
     project: nullableString(frontmatter.project),
+    assignee: nullableString(frontmatter.assignee),
     blocked_by: nullableString(frontmatter.blocked_by),
     pos,
     claude_active,
@@ -271,6 +274,7 @@ export interface TaskInput {
   date?: string | null;     // creación; default hoy
   due?: string | null;
   project?: string | null;
+  assignee?: string | null;
   blocked_by?: string | null;
   pos?: number | null;
   claude_active?: boolean;
@@ -311,6 +315,7 @@ function buildFrontmatter(t: TaskInput, currentDate: string): string {
   if (t.priority && t.priority !== 'normal')    fm.priority = t.priority;
   if (t.due)        fm.due = t.due;
   if (t.project)    fm.project = t.project;
+  if (t.assignee)   fm.assignee = t.assignee;
   if (t.blocked_by) fm.blocked_by = t.blocked_by;
   if (t.pos != null) fm.pos = t.pos;
   if (t.claude_active) fm.claude_active = true;
@@ -354,6 +359,7 @@ export function updateTask(
     date:       patch.date       !== undefined ? patch.date       : existing.date,
     due:        patch.due        !== undefined ? patch.due        : existing.due,
     project:    patch.project    !== undefined ? patch.project    : existing.project,
+    assignee:   patch.assignee   !== undefined ? patch.assignee   : existing.assignee,
     blocked_by: patch.blocked_by !== undefined ? patch.blocked_by : existing.blocked_by,
     pos:        patch.pos        !== undefined ? patch.pos        : existing.pos,
     claude_active: patch.claude_active !== undefined ? patch.claude_active : existing.claude_active,
@@ -409,6 +415,7 @@ export function moveToStatus(filename: string, status: Status): Task {
     date,
     due: existing.due,
     project: existing.project,
+    assignee: existing.assignee,
     blocked_by: existing.blocked_by,
     pos: existing.pos,
     claude_active: (status === 'done' || status === 'pending-review') ? false : existing.claude_active,

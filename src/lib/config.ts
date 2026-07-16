@@ -15,12 +15,18 @@
  *         { "key": "personal", "label": "Personal", "emoji": "🚀", "fields": ["type","updated","status","path"] },
  *         { "key": "work",     "label": "Work",     "emoji": "💼", "fields": ["type","updated","employer","path"] }
  *       ]
- *     }
+ *     },
+ *     "users": [
+ *       { "id": "alice", "label": "Alice", "emoji": "👤" }
+ *     ]
  *   }
  *
  * Categories define the sub-folders under `projectsDir/` and the structured
  * fields that show up in the project edit modal. The `key` is the folder
  * name and the value used for the `type:` frontmatter prefix (`project-<key>`).
+ *
+ * Users are optional. When empty, the assignee picker stays unassigned-only
+ * until you add members in klaudban.config.json.
  */
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -33,6 +39,12 @@ export interface CategoryConfig {
   fields?: string[];
   /** Optional override for the frontmatter `type:` value. Default: `project-<key>`. */
   type?:  string;
+}
+
+export interface TeamUser {
+  id:    string;
+  label: string;
+  emoji?: string;
 }
 
 export interface AppConfig {
@@ -54,6 +66,8 @@ export interface AppConfig {
   projects: {
     categories: CategoryConfig[];
   };
+  /** Team members available in the task assignee picker. */
+  users: TeamUser[];
 }
 
 const DEFAULTS: AppConfig = {
@@ -77,6 +91,7 @@ const DEFAULTS: AppConfig = {
       { key: 'work',     label: 'Work',     emoji: '💼', fields: ['type', 'updated', 'employer', 'path'] },
     ],
   },
+  users: [],
 };
 
 const CONFIG_FILENAME = 'klaudban.config.json';
@@ -136,3 +151,5 @@ export const CATEGORY_LABEL:   Record<string, string>        = Object.fromEntrie
 export const CATEGORY_EMOJI:   Record<string, string>        = Object.fromEntries(CONFIG.projects.categories.map(c => [c.key, c.emoji ?? '📁']));
 export const CATEGORY_FIELDS:  Record<string, string[]>      = Object.fromEntries(CONFIG.projects.categories.map(c => [c.key, c.fields ?? ['type', 'updated']]));
 export const CATEGORY_TYPE:    Record<string, string>        = Object.fromEntries(CONFIG.projects.categories.map(c => [c.key, c.type ?? `project-${c.key}`]));
+
+export const TEAM_USERS: TeamUser[] = CONFIG.users ?? [];

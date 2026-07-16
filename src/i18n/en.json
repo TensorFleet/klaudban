@@ -3,7 +3,10 @@
   "header": {
     "title_fallback": "Klaudban",
     "subtitle": "markdown kanban",
-    "tabs": { "tasks": "Tasks", "projects": "Projects" },
+    "tabs": {
+      "tasks": "Tasks",
+      "projects": "Projects"
+    },
     "new_task": "New task",
     "new_task_short": "New",
     "new_project": "New project",
@@ -33,7 +36,8 @@
     "priority": "Priority",
     "due": "Due",
     "category": "Category",
-    "remove": "Remove filter"
+    "remove": "Remove filter",
+    "assignee": "Assignee"
   },
   "due": {
     "no_date": "no date",
@@ -70,17 +74,18 @@
   },
   "modal": {
     "labels": {
-      "status":     "Status",
-      "priority":   "Priority",
-      "color":      "Color",
-      "due":        "Due",
-      "project":    "Project",
+      "status": "Status",
+      "priority": "Priority",
+      "color": "Color",
+      "due": "Due",
+      "project": "Project",
       "blocked_by": "Blocked by",
-      "body":       "Notes / subtasks",
-      "preview":    "Preview",
+      "body": "Notes / subtasks",
+      "preview": "Preview",
       "body_placeholder": "- [ ] Subtask 1\n- [ ] Subtask 2\n\nFree-form notes in markdown.\nObsidian embeds: ![[file.png]]",
       "delete_permanent": "Delete permanently",
-      "delete_confirm":   "Delete \"{title}\" permanently?\n\nThis removes the file from your vault. Cannot be undone."
+      "delete_confirm": "Delete \"{title}\" permanently?\n\nThis removes the file from your vault. Cannot be undone.",
+      "assignee": "Assignee"
     },
     "title_placeholder": "What needs doing?",
     "project_title_placeholder": "Project title",
@@ -105,7 +110,8 @@
     "project_deleted": "Project deleted",
     "prompt_copied": "Prompt copied",
     "copy_failed": "Could not copy to clipboard",
-    "save_order_failed": "Could not save order: {err}"
+    "save_order_failed": "Could not save order: {err}",
+    "assignee_none": "Unassigned"
   },
   "card": {
     "no_due_date_hint": "no date",

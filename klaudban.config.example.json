@@ -1,6 +1,6 @@
 {
   "vault": {
-    "tareasDir":   "./vault/tareas",
+    "tasksDir":    "./vault/tasks",
     "projectsDir": "./vault/projects",
     "embedsDir":   "./vault/embeds"
   },
@@ -18,5 +18,9 @@
       { "key": "personal", "label": "Personal", "emoji": "🚀", "fields": ["type", "updated", "status", "path"] },
       { "key": "work",     "label": "Work",     "emoji": "💼", "fields": ["type", "updated", "employer", "path"] }
     ]
-  }
+  },
+  "users": [
+    { "id": "alice", "label": "Alice", "emoji": "👤" },
+    { "id": "bob",   "label": "Bob",   "emoji": "👤" }
+  ]
 }

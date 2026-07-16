@@ -2,11 +2,12 @@
 import Layout from '../layouts/Layout.astro';
 import { listAll, listProjects } from '../lib/tasks';
 import { listProjectColors } from '../lib/projects';
-import { CONFIG } from '../lib/config';
+import { CONFIG, TEAM_USERS } from '../lib/config';
 import { t, MESSAGES } from '../i18n';
 
 const tasks         = listAll();
 const projects      = listProjects();
+const teamUsers     = TEAM_USERS;
 const projectColors = listProjectColors();
 const clientConfig  = {
   timezone:      CONFIG.ui.timezone,
@@ -133,6 +134,13 @@ const clientConfig  = {
               </select>
             </div>
             <div>
+              <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.assignee")}</label>
+              <select id="m-assignee" class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all">
+                <option value="">— unassigned —</option>
+                {teamUsers.map(u => <option value={u.id}>{u.emoji ? `${u.emoji} ` : ''}{u.label}</option>)}
+              </select>
+            </div>
+            <div>
               <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.blocked_by")}</label>
               <input id="m-blocked-by" type="text" placeholder={t('modal.blocked_by_placeholder')}
                      class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all dark:placeholder-slate-500" />
@@ -168,7 +176,7 @@ const clientConfig  = {
     </div>
   </div>
 
-  <script is:inline define:vars={{ initialTasks: tasks, projectsList: projects, projectColors, clientConfig, MSG: MESSAGES }}>
+  <script is:inline define:vars={{ initialTasks: tasks, projectsList: projects, projectColors, teamUsersList: teamUsers, clientConfig, MSG: MESSAGES }}>
     // ── Status ────────────────────────────────────────────────────────
     let tasks = initialTasks;
     // Filtros se persisten en localStorage para no perder el contexto al
@@ -177,7 +185,7 @@ const clientConfig  = {
     // mutación de filters.
     const FILTERS_KEY = 'klaudban:filters:v1';
     function loadFilters() {
-      const fallback = { search: '', project: '', priority: '', due: '', status: '' };
+      const fallback = { search: '', project: '', priority: '', due: '', status: '', assignee: '' };
       try {
         const raw = localStorage.getItem(FILTERS_KEY);
         if (!raw) return fallback;
@@ -188,6 +196,7 @@ const clientConfig  = {
           priority: typeof parsed.priority === 'string' ? parsed.priority : '',
           due:      typeof parsed.due      === 'string' ? parsed.due      : '',
           status:   typeof parsed.status   === 'string' ? parsed.status   : '',
+          assignee: typeof parsed.assignee === 'string' ? parsed.assignee : '',
         };
       } catch { return fallback; }
     }
@@ -271,6 +280,17 @@ const clientConfig  = {
       if (d <= 7)     return { txt: inDays, cls: 'text-amber-600 dark:text-amber-400 font-medium' };
       if (d <= 30)    return { txt: inDays, cls: 'text-slate-600 dark:text-slate-400' };
       return            { txt: inDays, cls: 'text-slate-400 dark:text-slate-500' };
+    }
+    const USER_META = Object.fromEntries((teamUsersList || []).map(u => [u.id, u]));
+    function assigneeLabel(id) {
+      if (!id) return '';
+      const u = USER_META[id];
+      return u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
+    }
+    function assigneeChip(id) {
+      if (!id) return '';
+      const label = assigneeLabel(id);
+      return `<span class="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 px-1.5 py-0.5 rounded-md font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800 truncate max-w-[150px]" title="${esc(label)}">${esc(label)}</span>`;
     }
     function projectChip(name) {
       let h = 0;
@@ -442,8 +462,8 @@ If the task was already in "pending-review" and you're picking it back up (revis
       week:    { label: MSG.due.this_week },
       nodate:  { label: MSG.card.no_due_date_hint },
     };
-    const FILTER_FIELD = { project: 'project', priority: 'priority', due: 'due' };
-    const FILTER_LABEL = { project: MSG.filters.project, priority: MSG.filters.priority, due: MSG.filters.due };
+    const FILTER_FIELD = { project: 'project', priority: 'priority', due: 'due', assignee: 'assignee' };
+    const FILTER_LABEL = { project: MSG.filters.project, priority: MSG.filters.priority, due: MSG.filters.due, assignee: MSG.filters.assignee };
 
     function countMatching(predicate) {
       // Counts contextuales: excluyen done, respetan search/project/status.
@@ -484,6 +504,24 @@ If the task was already in "pending-review" and you're picking it back up (revis
           key, label: m.label,
           count: countMatching(t => pred[key](t) && (!filters.project || t.project === filters.project)),
         }));
+      }
+      if (kind === 'assignee') {
+        const ids = new Set((teamUsersList || []).map(u => u.id));
+        for (const t of tasks) { if (t.assignee) ids.add(t.assignee); }
+        const items = [...ids].map(id => ({
+          key: id,
+          label: assigneeLabel(id) || id,
+          count: countMatching(t => t.assignee === id && (!filters.project || t.project === filters.project)),
+        })).sort((a, b) => {
+          if (a.count !== b.count) return b.count - a.count;
+          return a.label.localeCompare(b.label);
+        });
+        items.push({
+          key: '__unassigned__',
+          label: MSG.modal?.assignee_none || 'Unassigned',
+          count: countMatching(t => !t.assignee && (!filters.project || t.project === filters.project)),
+        });
+        return items;
       }
       // project
       const stats = new Map();
@@ -630,7 +668,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
 
     function renderChips() {
       const c = document.getElementById('chip-filters');
-      c.innerHTML = pillHTML('project') + pillHTML('priority') + pillHTML('due');
+      c.innerHTML = pillHTML('project') + pillHTML('priority') + pillHTML('due') + pillHTML('assignee');
       c.querySelectorAll('[data-filter-pill]').forEach(p => p.addEventListener('click', (e) => {
         const kind = p.dataset.filterPill;
         if (e.target.closest('[data-pill-clear]')) {
@@ -644,7 +682,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
       }));
     }
     function updateClearBtn() {
-      const any = filters.search || filters.project || filters.priority || filters.due || filters.status;
+      const any = filters.search || filters.project || filters.priority || filters.due || filters.status || filters.assignee;
       document.getElementById('clear-filters').classList.toggle('hidden', !any);
       persistFilters();
     }
@@ -656,6 +694,11 @@ If the task was already in "pending-review" and you're picking it back up (revis
       }
       if (filters.project  && t.project  !== filters.project)  return false;
       if (filters.priority && t.priority !== filters.priority) return false;
+      if (filters.assignee) {
+        if (filters.assignee === '__unassigned__') {
+          if (t.assignee) return false;
+        } else if (t.assignee !== filters.assignee) return false;
+      }
       if (filters.status) {
         // 'pending-review' vive visualmente dentro de la columna 'doing', así
         // que el filtro de "En curso" también la incluye.
@@ -796,6 +839,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
               <div class="flex flex-wrap items-center gap-1.5 mt-2">
                 ${claudeBadge}
                 ${t.project ? projectChip(t.project) : ''}
+                ${t.assignee ? assigneeChip(t.assignee) : ''}
                 ${dueChip}
                 ${claudeTimer}
               </div>
@@ -1205,6 +1249,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
     const mDue        = document.getElementById('m-due');
     const mDueHint    = document.getElementById('m-due-hint');
     const mProject    = document.getElementById('m-project');
+    const mAssignee   = document.getElementById('m-assignee');
     const mBlockedBy  = document.getElementById('m-blocked-by');
     const mBody       = document.getElementById('m-body');
     const mPreview    = document.getElementById('m-preview');
@@ -1333,6 +1378,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         mColor           = t.color ?? null;
         mDue.value       = t.due ?? '';
         mProject.value   = t.project ?? '';
+        mAssignee.value  = t.assignee ?? '';
         mBlockedBy.value = t.blocked_by ?? '';
         mBody.value      = t.body.replace(/^\n+/, '');
         mDelete.classList.remove('invisible');
@@ -1348,6 +1394,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         mColor = defaults.color ?? null;
         mDue.value = defaults.due ?? (filters.due === 'today' ? todayLima() : '');
         mProject.value = defaults.project ?? (filters.project || '');
+        mAssignee.value = defaults.assignee ?? '';
         mBlockedBy.value = '';
         mBody.value = '';
         mDelete.classList.add('invisible');
@@ -1404,6 +1451,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         priority:   mPriority,
         due:        mDue.value || null,
         project:    mProject.value || null,
+        assignee:   mAssignee.value || null,
         blocked_by: mBlockedBy.value.trim() || null,
         color:      mColor,
         body:       mBody.value,
@@ -1465,7 +1513,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
       renderChips(); renderBoard(); updateClearBtn();
     });
     document.getElementById('clear-filters').addEventListener('click', () => {
-      filters = { search: '', project: '', priority: '', due: '', status: '' };
+      filters = { search: '', project: '', priority: '', due: '', status: '', assignee: '' };
       search.value = '';
       searchClear.classList.add('hidden');
       renderStats(); renderChips(); renderBoard(); updateClearBtn();
