@@ -4,6 +4,7 @@ import {
   toggleSubtask, reorderColumn, STATUSES, PRIORITIES, CARD_COLORS,
   type Status, type Priority, type CardColor,
 } from '../../lib/tasks';
+import { defaultAssigneeFromHeaders, ensureUserFromHeaders } from '../../lib/users';
 
 // Aliases para los ops de Claude: el prompt usa formas cortas (start/review/done/stop)
 // para curl menos ruidoso; los `claude_*` se mantienen por compat con prompts
@@ -32,7 +33,9 @@ function ok(data: unknown) {
   });
 }
 
-export const GET: APIRoute = ({ url }) => {
+export const GET: APIRoute = ({ url, request }) => {
+  // Side-effect: register the reverse-proxy principal if present.
+  ensureUserFromHeaders(request.headers);
   const file = url.searchParams.get('file');
   if (file) {
     const t = getOne(file);
@@ -47,13 +50,14 @@ export const POST: APIRoute = async ({ request }) => {
   if (!body) return bad('body inválido');
   if (!body.title?.trim()) return bad('title requerido');
   try {
+    const assignee = defaultAssigneeFromHeaders(request.headers, body.assignee ?? null);
     const t = createTask({
       title:      body.title,
       status:     validStatus(body.status),
       priority:   validPriority(body.priority),
       due:        body.due ?? null,
       project:    body.project ?? null,
-      assignee:   body.assignee ?? null,
+      assignee,
       blocked_by: body.blocked_by ?? null,
       color:      validColor(body.color),
       body:       body.body,

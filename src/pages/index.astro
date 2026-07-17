@@ -2,17 +2,21 @@
 import Layout from '../layouts/Layout.astro';
 import { listAll, listProjects } from '../lib/tasks';
 import { listProjectColors } from '../lib/projects';
-import { CONFIG, TEAM_USERS } from '../lib/config';
+import { CONFIG } from '../lib/config';
+import { ensureUserFromHeaders, listUsers } from '../lib/users';
 import { t, MESSAGES } from '../i18n';
 
+// Auto-register the reverse-proxy principal (if any) before rendering the board.
+const currentUser = ensureUserFromHeaders(Astro.request.headers);
 const tasks         = listAll();
 const projects      = listProjects();
-const teamUsers     = TEAM_USERS;
+const teamUsers     = listUsers();
 const projectColors = listProjectColors();
 const clientConfig  = {
   timezone:      CONFIG.ui.timezone,
   claudeEnabled: CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl,
   apiBaseUrl:    CONFIG.claude.apiBaseUrl ?? '',
+  currentUserId: currentUser?.id ?? null,
 };
 ---
 <Layout title="Board">
@@ -281,11 +285,39 @@ const clientConfig  = {
       if (d <= 30)    return { txt: inDays, cls: 'text-slate-600 dark:text-slate-400' };
       return            { txt: inDays, cls: 'text-slate-400 dark:text-slate-500' };
     }
-    const USER_META = Object.fromEntries((teamUsersList || []).map(u => [u.id, u]));
+    let USER_META = Object.fromEntries((teamUsersList || []).map(u => [u.id, u]));
     function assigneeLabel(id) {
       if (!id) return '';
       const u = USER_META[id];
       return u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
+    }
+    function rebuildAssigneeSelect(selected) {
+      if (!mAssignee) return;
+      const current = selected !== undefined ? selected : mAssignee.value;
+      const opts = ['<option value="">— unassigned —</option>'];
+      for (const u of Object.values(USER_META)) {
+        const label = `${u.emoji ? u.emoji + ' ' : ''}${u.label}`;
+        opts.push(`<option value="${esc(u.id)}">${esc(label)}</option>`);
+      }
+      mAssignee.innerHTML = opts.join('');
+      if (current && USER_META[current]) mAssignee.value = current;
+      else mAssignee.value = current || '';
+    }
+    async function syncAuthUser() {
+      try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.users)) {
+          USER_META = Object.fromEntries(data.users.map(u => [u.id, u]));
+          rebuildAssigneeSelect(mAssignee ? mAssignee.value : '');
+        }
+        if (data.me && data.me.id) {
+          clientConfig.currentUserId = data.me.id;
+        }
+      } catch {
+        // Offline / no proxy auth — leave the static user list alone.
+      }
     }
     function assigneeChip(id) {
       if (!id) return '';
@@ -1255,6 +1287,8 @@ If the task was already in "pending-review" and you're picking it back up (revis
     const mPreview    = document.getElementById('m-preview');
     const mDelete     = document.getElementById('m-delete');
     const mCopyPrompt = document.getElementById('m-copy-prompt');
+    // After the select exists, refresh users from auth headers / disk.
+    syncAuthUser();
     let mStatus = 'pending';
     let mPriority = 'normal';
     let mColor = null; // null = sin color
@@ -1394,7 +1428,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         mColor = defaults.color ?? null;
         mDue.value = defaults.due ?? (filters.due === 'today' ? todayLima() : '');
         mProject.value = defaults.project ?? (filters.project || '');
-        mAssignee.value = defaults.assignee ?? '';
+        mAssignee.value = defaults.assignee ?? clientConfig.currentUserId ?? '';
         mBlockedBy.value = '';
         mBody.value = '';
         mDelete.classList.add('invisible');
