@@ -9,6 +9,9 @@
  * Each user accumulates auth *providers* (origins) over time, e.g.
  * ["google"], ["local"], or ["google","local"]. The same email id is
  * reused when a second IdP is linked — we only append the provider.
+ *
+ * Persistence is synchronous (writeFileSync) so a later request never
+ * reloadFromDisk()'s a stale file over a just-updated in-memory list.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -19,7 +22,6 @@ const CONFIG_FILENAME = 'klaudban.config.json';
 const DEFAULT_EMOJI = '👤';
 
 let users: TeamUser[] = normalizeUsers(CONFIG.users ?? []);
-let writeQueue: Promise<void> = Promise.resolve();
 
 function configPath(): string {
   return resolve(process.cwd(), CONFIG_FILENAME);
@@ -62,7 +64,11 @@ function normalizeUsers(list: TeamUser[]): TeamUser[] {
   return out;
 }
 
-function reloadFromDisk(): void {
+/**
+ * Optional refresh from disk (e.g. after an external CLI migrate).
+ * Not used on the request hot path — avoids racing a concurrent write.
+ */
+export function reloadUsersFromDisk(): void {
   try {
     const path = configPath();
     if (!existsSync(path)) return;
@@ -85,8 +91,14 @@ function persistUsers(next: TeamUser[]): void {
   } catch {
     base = {};
   }
+  // Preserve non-users keys; replace users with the authoritative in-memory list.
   base.users = next;
   writeFileSync(path, JSON.stringify(base, null, 2) + '\n', 'utf8');
+}
+
+function commitUsers(next: TeamUser[]): void {
+  users = next;
+  persistUsers(next);
 }
 
 /** Current team members (config + any auto-created auth users). */
@@ -111,7 +123,6 @@ export function ensureUserFromHeaders(headers: Headers): TeamUser | null {
 }
 
 export function ensureUser(identity: RequestIdentity): TeamUser {
-  reloadFromDisk();
   const existing = users.find((u) => u.id === identity.id);
   const incomingProvider = normalizeProvider(identity.provider || '');
 
@@ -137,9 +148,7 @@ export function ensureUser(identity: RequestIdentity): TeamUser {
     }
 
     if (changed) {
-      const updated = users.map((u) => (u.id === existing.id ? nextUser : u));
-      users = updated;
-      enqueuePersist(updated);
+      commitUsers(users.map((u) => (u.id === existing.id ? nextUser : u)));
       return nextUser;
     }
     return existing;
@@ -151,25 +160,33 @@ export function ensureUser(identity: RequestIdentity): TeamUser {
     emoji: DEFAULT_EMOJI,
     providers: incomingProvider ? [incomingProvider] : [],
   };
-  const next = [...users, created];
-  users = next;
-  enqueuePersist(next);
+  commitUsers([...users, created]);
   return created;
 }
 
-function enqueuePersist(next: TeamUser[]): void {
-  writeQueue = writeQueue
-    .then(() => {
-      persistUsers(next);
-    })
-    .catch((err) => {
-      console.error('[users] failed to persist klaudban.config.json users:', err);
-    });
+/**
+ * Resolve assignee on task create.
+ *
+ * - Body **omits** `assignee` → default to signed-in user (if any).
+ * - Body sets `assignee: null` / `""` → explicit unassigned.
+ * - Body sets a non-empty string → that id.
+ */
+export function resolveAssigneeForCreate(
+  headers: Headers,
+  body: Record<string, unknown>,
+): string | null {
+  if (Object.prototype.hasOwnProperty.call(body, 'assignee')) {
+    const a = body.assignee;
+    if (a == null || String(a).trim() === '') return null;
+    return String(a).trim().toLowerCase();
+  }
+  // Missing key: prefer logged-in principal.
+  return ensureUserFromHeaders(headers)?.id ?? null;
 }
 
 /**
- * If the request has auth headers and the body did not set an assignee,
- * default to the logged-in user (after ensuring they exist in the list).
+ * @deprecated Prefer resolveAssigneeForCreate — kept for call sites that only
+ * have a scalar. Treats null/empty as "use default self" (legacy).
  */
 export function defaultAssigneeFromHeaders(
   headers: Headers,
@@ -196,10 +213,8 @@ export function updateSelfLabel(headers: Headers, labelRaw: string): TeamUser | 
   if (label.length > 80) {
     throw new Error('label too long');
   }
-  reloadFromDisk();
   const next = users.map((u) => (u.id === me.id ? { ...u, label } : u));
-  users = next;
-  enqueuePersist(next);
+  commitUsers(next);
   return next.find((u) => u.id === me.id) ?? null;
 }
 

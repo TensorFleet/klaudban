@@ -607,7 +607,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         }));
       }
       if (kind === 'assignee') {
-        const ids = new Set((teamUsersList || []).map(u => u.id));
+        const ids = new Set(Object.keys(USER_META));
         for (const t of tasks) { if (t.assignee) ids.add(t.assignee); }
         const items = [...ids].map(id => ({
           key: id,

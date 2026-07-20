@@ -3,7 +3,7 @@
  * Migrate / rename a klaudban user id.
  *
  * Usage:
- *   node scripts/migrate-user-id.mjs <fromId> <toId> [--dry-run] [--yes]
+ *   node scripts/migrate-user-id.mjs <fromId> <toId> [--dry-run] [--yes] [--force]
  *   npm run user:migrate -- <fromId> <toId> --dry-run
  *
  * Behavior:
@@ -11,8 +11,10 @@
  * - Updates klaudban.config.json users[]:
  *   - target missing → rename source entry to target id
  *   - target exists  → merge providers (union), merge label/emoji, delete source
- * - Label rule: keep target label unless it is empty or equals the id
+ * - Label rule: keep target label unless empty or equals the id (not email local-part)
  * - Requires --yes to write (or only --dry-run to preview)
+ * - YAML load/dump uses CORE_SCHEMA so dates stay strings
+ * - Parse failures are reported; --yes fails unless --force
  *
  * Paths: reads klaudban.config.json from process.cwd() (or --cwd).
  */
@@ -23,8 +25,11 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const yaml = require('js-yaml');
 
+/** Keep scalars as strings (no Date objects for due:/date:). */
+const YAML_OPTS = { schema: yaml.CORE_SCHEMA, lineWidth: 100 };
+
 function usage(code = 1) {
-  console.error(`Usage: node scripts/migrate-user-id.mjs <fromId> <toId> [--dry-run] [--yes] [--cwd <dir>]
+  console.error(`Usage: node scripts/migrate-user-id.mjs <fromId> <toId> [--dry-run] [--yes] [--force] [--cwd <dir>]
 
 Examples:
   npm run user:migrate -- alice alice@tensorfleet.net --dry-run
@@ -34,11 +39,18 @@ Examples:
 }
 
 function parseArgs(argv) {
-  const args = { dryRun: false, yes: false, cwd: process.cwd(), positional: [] };
+  const args = {
+    dryRun: false,
+    yes: false,
+    force: false,
+    cwd: process.cwd(),
+    positional: [],
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') args.dryRun = true;
     else if (a === '--yes' || a === '-y') args.yes = true;
+    else if (a === '--force') args.force = true;
     else if (a === '--cwd') args.cwd = resolve(argv[++i] || '');
     else if (a === '-h' || a === '--help') usage(0);
     else if (a.startsWith('-')) {
@@ -64,6 +76,33 @@ function normalizeProviders(list) {
     out.push(p);
   }
   return out;
+}
+
+/** Collapse case-duplicate ids; later entries merge providers into the first. */
+function dedupeUsers(list) {
+  const byId = new Map();
+  for (const u of list) {
+    if (!u?.id) continue;
+    const id = normId(u.id);
+    if (!id) continue;
+    const providers = normalizeProviders(u.providers);
+    if (!byId.has(id)) {
+      byId.set(id, {
+        id,
+        label: (u.label && String(u.label).trim()) || id,
+        emoji: u.emoji || '👤',
+        providers,
+      });
+    } else {
+      const cur = byId.get(id);
+      cur.providers = normalizeProviders([...cur.providers, ...providers]);
+      if (isPlaceholderLabel(cur) && u.label && String(u.label).trim()) {
+        cur.label = String(u.label).trim();
+      }
+      if (!cur.emoji && u.emoji) cur.emoji = u.emoji;
+    }
+  }
+  return [...byId.values()];
 }
 
 function isPlaceholderLabel(user) {
@@ -148,9 +187,7 @@ function main() {
 
   const { path: configPath, data } = loadConfig(args.cwd);
   const tasksDir = tasksDirFromConfig(args.cwd, data);
-  const users = Array.isArray(data.users)
-    ? data.users.map((u) => ({ ...u, id: normId(u.id) }))
-    : [];
+  const users = dedupeUsers(Array.isArray(data.users) ? data.users : []);
 
   const source = users.find((u) => u.id === fromId) || null;
   const target = users.find((u) => u.id === toId) || null;
@@ -168,45 +205,63 @@ function main() {
   let nextUsers = users.slice();
   let userAction = 'none';
   if (source && !target) {
-    nextUsers = users.map((u) =>
-      u.id === fromId
-        ? { ...u, id: toId, providers: normalizeProviders(u.providers) }
-        : u,
+    nextUsers = dedupeUsers(
+      users.map((u) =>
+        u.id === fromId
+          ? { ...u, id: toId, providers: normalizeProviders(u.providers) }
+          : u,
+      ),
     );
     userAction = 'rename';
   } else if (source && target) {
     const merged = mergeUsers(source, target, toId);
-    nextUsers = users.filter((u) => u.id !== fromId && u.id !== toId).concat([merged]);
+    nextUsers = dedupeUsers(
+      users.filter((u) => u.id !== fromId && u.id !== toId).concat([merged]),
+    );
     userAction = 'merge';
   } else {
     userAction = 'assignees-only';
+    nextUsers = users;
   }
 
   const files = walkMdFiles(tasksDir);
   const taskChanges = [];
+  const skipped = [];
   for (const file of files) {
     const raw = readFileSync(file, 'utf8');
-    const parts = splitFrontmatter(raw);
-    if (!parts) continue;
-    let fm;
-    try {
-      fm = yaml.load(parts.fmRaw) || {};
-    } catch {
+    const rel = relative(args.cwd, file);
+    if (!raw.startsWith('---')) {
+      // no frontmatter — ignore
       continue;
     }
-    if (typeof fm !== 'object' || fm === null) continue;
+    const parts = splitFrontmatter(raw);
+    if (!parts) {
+      skipped.push({ rel, reason: 'malformed frontmatter fence' });
+      continue;
+    }
+    let fm;
+    try {
+      fm = yaml.load(parts.fmRaw, YAML_OPTS) || {};
+    } catch (err) {
+      skipped.push({ rel, reason: `yaml parse: ${err.message || err}` });
+      continue;
+    }
+    if (typeof fm !== 'object' || fm === null || Array.isArray(fm)) {
+      skipped.push({ rel, reason: 'frontmatter is not a mapping' });
+      continue;
+    }
     const cur = fm.assignee != null ? normId(String(fm.assignee)) : '';
     if (cur !== fromId) continue;
 
     fm.assignee = toId;
-    const yamlStr = yaml.dump(fm, { lineWidth: 100 }).trim();
+    const yamlStr = yaml.dump(fm, YAML_OPTS).trim();
     let body = parts.body || '';
     if (body && !body.startsWith('\n')) body = '\n' + body;
     let finalRaw = `---\n${yamlStr}\n---\n${body}`;
     if (!finalRaw.endsWith('\n')) finalRaw += '\n';
     taskChanges.push({
       file,
-      rel: relative(args.cwd, file),
+      rel,
       from: fromId,
       to: toId,
       nextRaw: finalRaw,
@@ -231,27 +286,47 @@ function main() {
             : target,
         taskFilesToRewrite: taskChanges.length,
         tasks: taskChanges.map((t) => t.rel),
+        skippedFiles: skipped,
       },
       null,
       2,
     ),
   );
 
+  if (skipped.length) {
+    console.warn(`\nWarning: skipped ${skipped.length} task file(s) (see skippedFiles).`);
+  }
+
   if (args.dryRun) {
     console.log('\nDry run only — no files written.');
     return;
+  }
+
+  if (skipped.length && !args.force) {
+    console.error(
+      'Aborting write because some task files were skipped. Re-run with --force to apply partial migrate, or fix those files first.',
+    );
+    process.exit(3);
   }
 
   for (const t of taskChanges) {
     writeFileSync(t.file, t.nextRaw, 'utf8');
   }
 
-  if (userAction === 'rename' || userAction === 'merge') {
-    data.users = nextUsers;
-    writeFileSync(configPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  if (userAction === 'rename' || userAction === 'merge' || userAction === 'assignees-only') {
+    // Always write deduped users when we touched config path for rename/merge;
+    // assignees-only still rewrite tasks only unless we want to persist dedupe —
+    // persist dedupe on any successful --yes for consistency when rename/merge.
+    if (userAction === 'rename' || userAction === 'merge') {
+      data.users = nextUsers;
+      writeFileSync(configPath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    }
   }
 
   console.log(`\nWrote ${taskChanges.length} task file(s); users action=${userAction}.`);
+  if (skipped.length) {
+    console.warn(`Skipped ${skipped.length} file(s) (--force).`);
+  }
 }
 
 try {

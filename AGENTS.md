@@ -137,10 +137,13 @@ node scripts/migrate-user-id.mjs <fromId> <toId> --yes
 | either missing from config | still rewrites task `assignee:` values |
 
 - **Tasks:** every `assignee: <fromId>` under `vault.tasksDir` → `<toId>`
-- **Label rule:** keep target label unless it looks like a placeholder
-  (empty / equals id / equals email local-part); then take source label
-- **Providers:** sorted unique union of both sides
-- **Safety:** refuses to write without `--yes`; use `--dry-run` to print the plan as JSON
+- **Label rule:** keep target label unless it is a placeholder
+  (empty, or equals the full id). Email local-part alone is **not** treated
+  as a placeholder (so a real name like "Levi" for `levi@…` is kept).
+- **Providers:** unique union of both sides
+- **Safety:** refuses to write without `--yes`; use `--dry-run` to print the plan as JSON.
+  Malformed task YAML is listed in `skippedFiles`; `--yes` aborts unless `--force`.
+  YAML uses CORE_SCHEMA so `due:` / `date:` stay strings.
 - **cwd:** run from the klaudban app directory (where `klaudban.config.json` lives),
   or pass `--cwd /path/to/app`
 

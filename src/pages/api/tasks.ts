@@ -4,7 +4,7 @@ import {
   toggleSubtask, reorderColumn, STATUSES, PRIORITIES, CARD_COLORS,
   type Status, type Priority, type CardColor,
 } from '../../lib/tasks';
-import { defaultAssigneeFromHeaders, ensureUserFromHeaders } from '../../lib/users';
+import { resolveAssigneeForCreate, ensureUserFromHeaders } from '../../lib/users';
 
 // Aliases para los ops de Claude: el prompt usa formas cortas (start/review/done/stop)
 // para curl menos ruidoso; los `claude_*` se mantienen por compat con prompts
@@ -50,7 +50,7 @@ export const POST: APIRoute = async ({ request }) => {
   if (!body) return bad('body inválido');
   if (!body.title?.trim()) return bad('title requerido');
   try {
-    const assignee = defaultAssigneeFromHeaders(request.headers, body.assignee ?? null);
+    const assignee = resolveAssigneeForCreate(request.headers, body as Record<string, unknown>);
     const t = createTask({
       title:      body.title,
       status:     validStatus(body.status),
