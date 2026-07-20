@@ -3,7 +3,7 @@
  *
  * When klaudban sits behind AuthCrunch with `inject headers with claims`,
  * requests arrive with X-Token-* claim headers. Caddy may also forward
- * `X-Actor` (email) the same way KiwiFS does.
+ * `X-Actor` (email) and `X-Auth-Provider` / `X-Token-User-Origin` (IdP origin).
  */
 
 export interface RequestIdentity {
@@ -12,6 +12,11 @@ export interface RequestIdentity {
   email: string;
   /** Display name when present; otherwise derived from the email local-part. */
   label: string;
+  /**
+   * AuthCrunch identity origin / realm for this session, e.g. "local", "google".
+   * Empty when the proxy did not inject a provider claim.
+   */
+  provider: string;
 }
 
 function firstHeader(headers: Headers, names: string[]): string {
@@ -31,6 +36,18 @@ function labelFromEmail(email: string): string {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ') || email;
+}
+
+/** Normalize AuthCrunch origin/provider strings. */
+export function normalizeProvider(raw: string): string {
+  const p = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^authp\//, '')
+    .replace(/^provider\//, '');
+  // strip noise like "local realm" → keep first token
+  const token = p.split(/[\s,;|]+/).filter(Boolean)[0] || '';
+  return token.replace(/[^a-z0-9._+-]/g, '') || '';
 }
 
 /**
@@ -55,9 +72,19 @@ export function identityFromHeaders(headers: Headers): RequestIdentity | null {
     'x-token-user-fullname',
   ]);
 
+  const provider = normalizeProvider(
+    firstHeader(headers, [
+      'x-token-user-origin',
+      'x-auth-provider',
+      'x-token-origin',
+      'x-token-user-provider',
+    ]),
+  );
+
   return {
     id: email,
     email,
     label: name || labelFromEmail(email),
+    provider,
   };
 }

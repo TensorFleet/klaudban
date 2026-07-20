@@ -116,6 +116,28 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
       </nav>
 
       <div class="flex items-center gap-2">
+        <!-- Self preview: label editable, id read-only (auth via proxy headers). -->
+        <div id="self-preview" class="relative hidden">
+          <button id="self-preview-btn" type="button"
+                  class="max-w-[11rem] sm:max-w-[14rem] h-9 px-2.5 rounded-xl flex items-center gap-1.5 bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-soft">
+            <span id="self-preview-emoji" class="text-sm leading-none shrink-0">👤</span>
+            <span id="self-preview-label" class="text-xs font-semibold truncate"></span>
+          </button>
+          <div id="self-preview-panel" class="hidden absolute right-0 mt-2 w-[280px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-drag ring-1 ring-slate-200/60 dark:ring-slate-700/60 z-50 p-3.5">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">You</p>
+            <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Id</label>
+            <input id="self-preview-id" type="text" readonly
+                   class="w-full mb-3 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-[12px] font-mono bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 cursor-not-allowed select-all" />
+            <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Label</label>
+            <input id="self-preview-label-input" type="text" maxlength="80"
+                   class="w-full mb-3 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none" />
+            <div class="flex items-center justify-end gap-2">
+              <button id="self-preview-cancel" type="button" class="text-xs px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>
+              <button id="self-preview-save" type="button" class="text-xs px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold">Save</button>
+            </div>
+            <p id="self-preview-err" class="hidden mt-2 text-[11px] text-rose-600 dark:text-rose-400"></p>
+          </div>
+        </div>
         {claudeEnabled && (
         <!-- Notifications dropdown — only rendered when Claude integration is
              enabled in config. The events all come from the claude_active
@@ -180,6 +202,104 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
       const isDark = document.documentElement.classList.toggle('dark');
       try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch {}
     });
+
+    // Self preview (label editable; id greyed read-only). Driven by /api/me
+    // so it works on every page when reverse-proxy auth headers are present.
+    (function() {
+      const wrap   = document.getElementById('self-preview');
+      const btn    = document.getElementById('self-preview-btn');
+      const panel  = document.getElementById('self-preview-panel');
+      const emojiEl = document.getElementById('self-preview-emoji');
+      const labelEl = document.getElementById('self-preview-label');
+      const idInput = document.getElementById('self-preview-id');
+      const labelIn = document.getElementById('self-preview-label-input');
+      const saveBtn = document.getElementById('self-preview-save');
+      const cancelBtn = document.getElementById('self-preview-cancel');
+      const errEl  = document.getElementById('self-preview-err');
+      if (!wrap || !btn || !panel || !labelIn) return;
+
+      let me = null;
+
+      function paint(user) {
+        me = user;
+        if (!user) {
+          wrap.classList.add('hidden');
+          return;
+        }
+        wrap.classList.remove('hidden');
+        emojiEl.textContent = user.emoji || '👤';
+        labelEl.textContent = user.label || user.id;
+        idInput.value = user.id || '';
+        labelIn.value = user.label || '';
+        errEl.classList.add('hidden');
+        errEl.textContent = '';
+      }
+
+      function openPanel() {
+        if (!me) return;
+        labelIn.value = me.label || '';
+        errEl.classList.add('hidden');
+        panel.classList.remove('hidden');
+        setTimeout(() => labelIn.focus(), 30);
+      }
+      function closePanel() {
+        panel.classList.add('hidden');
+      }
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (panel.classList.contains('hidden')) openPanel();
+        else closePanel();
+      });
+      cancelBtn?.addEventListener('click', (e) => { e.stopPropagation(); closePanel(); });
+      document.addEventListener('click', (e) => {
+        if (!panel.classList.contains('hidden') && !wrap.contains(e.target)) closePanel();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !panel.classList.contains('hidden')) closePanel();
+      });
+
+      saveBtn?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const label = (labelIn.value || '').trim();
+        if (!label) {
+          errEl.textContent = 'Label is required';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        saveBtn.disabled = true;
+        try {
+          const res = await fetch('/api/me', {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+          paint(data.me);
+          // Keep board assignee lists in sync when index page is open.
+          if (Array.isArray(data.users) && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('klaudban:users-updated', { detail: data }));
+          }
+          closePanel();
+        } catch (err) {
+          errEl.textContent = err.message || 'Save failed';
+          errEl.classList.remove('hidden');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+
+      labelIn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveBtn?.click(); }
+      });
+
+      fetch('/api/me', { credentials: 'same-origin' })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data?.me) paint(data.me); })
+        .catch(() => {});
+    })();
 
     // Notifications de Claude. El botón de campana ya no es toggle on/off,
     // ahora abre un popover con la lista persistida de eventos detectados por

@@ -46,6 +46,13 @@ export interface TeamUser {
   id:    string;
   label: string;
   emoji?: string;
+  /**
+   * AuthCrunch origins / IdPs linked to this id over time
+   * (e.g. ["local"], ["google"], ["google","local"]).
+   * When exactly one provider is present the UI shows a grey badge;
+   * multiple providers hide the badge (linked accounts).
+   */
+  providers?: string[];
 }
 
 export interface AppConfig {
