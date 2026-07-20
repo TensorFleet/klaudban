@@ -112,8 +112,52 @@ Then a message to the user: *"Bumped Astro and rebuilt. Restart needed (`sudo sy
 
 The board's polling + notification panel exists for **you** (the human), not for the agent. The agent fires events; the bell shows them. If you want the agent to react to events on the board (you moved a card, you added a comment), that's not built yet — see Roadmap in the main README.
 
+## User id migration (CLI / agents)
+
+Rename or merge a user id across `klaudban.config.json` **and** task frontmatter
+`assignee:` fields. No UI — CLI only (safe for humans and AI agents).
+
+```bash
+# Always dry-run first
+npm run user:migrate -- <fromId> <toId> --dry-run
+
+# Apply (requires --yes)
+npm run user:migrate -- <fromId> <toId> --yes
+
+# Or directly:
+node scripts/migrate-user-id.mjs <fromId> <toId> --dry-run
+node scripts/migrate-user-id.mjs <fromId> <toId> --yes
+```
+
+### Behavior
+| Case | Result |
+|------|--------|
+| target **missing** | rename source user entry → `toId` |
+| target **exists** | **merge**: union `providers[]`, merge label/emoji, drop source entry |
+| either missing from config | still rewrites task `assignee:` values |
+
+- **Tasks:** every `assignee: <fromId>` under `vault.tasksDir` → `<toId>`
+- **Label rule:** keep target label unless it looks like a placeholder
+  (empty / equals id / equals email local-part); then take source label
+- **Providers:** sorted unique union of both sides
+- **Safety:** refuses to write without `--yes`; use `--dry-run` to print the plan as JSON
+- **cwd:** run from the klaudban app directory (where `klaudban.config.json` lives),
+  or pass `--cwd /path/to/app`
+
+### Agent note
+When consolidating a config-only handle into an auth email (or linking a second
+IdP onto an existing email id), use this CLI instead of hand-editing markdown.
+After a successful migrate, restart is **not** required for tasks (files on disk);
+the running process reloads users from disk on the next ensure/list path, but a
+restart is the surest way to refresh in-memory state:
+
+```bash
+systemctl --user restart klaudban.service   # if deployed that way
+```
+
 ## What's NOT exposed
 
 - No auth, no per-user permissions. Anyone with network access to `apiBaseUrl` can read and write. See the Security note in the main README.
 - No real-time push (SSE / WebSocket). The board polls every 5s; the agent's `curl` updates the file immediately, but the UI takes up to 5s to reflect.
 - No "agent identity" — every call looks the same. If you want a per-agent activity log, write it as a comment in the task body.
+- No HTTP admin API for user migration yet — use `npm run user:migrate` / `scripts/migrate-user-id.mjs` only.

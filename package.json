@@ -11,7 +11,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "start": "node ./dist/server/entry.mjs"
+    "start": "node ./dist/server/entry.mjs",
+    "user:migrate": "node ./scripts/migrate-user-id.mjs"
   },
   "keywords": [
     "kanban",
