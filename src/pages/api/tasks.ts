@@ -4,7 +4,7 @@ import {
   toggleSubtask, reorderColumn, STATUSES, PRIORITIES, CARD_COLORS,
   type Status, type Priority, type CardColor,
 } from '../../lib/tasks';
-import { resolveAssigneeForCreate, ensureUserFromHeaders } from '../../lib/users';
+import { resolveAssigneeForCreate, ensureUserFromHeaders, normalizeAssigneeId } from '../../lib/users';
 
 // Aliases para los ops de Claude: el prompt usa formas cortas (start/review/done/stop)
 // para curl menos ruidoso; los `claude_*` se mantienen por compat con prompts
@@ -125,6 +125,10 @@ export const PATCH: APIRoute = async ({ url, request }) => {
       return ok(updateTask(file, { claude_active: false }));
     }
     // Update general
+    const assigneePatch =
+      body.assignee === undefined
+        ? undefined
+        : normalizeAssigneeId(body.assignee);
     const t = updateTask(file, {
       title:      body.title,
       status:     validStatus(body.status),
@@ -132,7 +136,7 @@ export const PATCH: APIRoute = async ({ url, request }) => {
       date:       body.date,
       due:        body.due,
       project:    body.project,
-      assignee:   body.assignee,
+      assignee:   assigneePatch,
       blocked_by: body.blocked_by,
       color:      body.color === undefined ? undefined : validColor(body.color),
       body:       body.body,

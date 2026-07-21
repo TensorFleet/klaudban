@@ -291,10 +291,18 @@ const clientConfig  = {
       if (d <= 30)    return { txt: inDays, cls: 'text-slate-600 dark:text-slate-400' };
       return            { txt: inDays, cls: 'text-slate-400 dark:text-slate-500' };
     }
-    let USER_META = Object.fromEntries((teamUsersList || []).map(u => [u.id, u]));
+    let USER_META = Object.fromEntries((teamUsersList || []).map(u => [String(u.id).toLowerCase(), u]));
+    function userMeta(id) {
+      if (!id) return null;
+      return USER_META[String(id).trim().toLowerCase()] || null;
+    }
+    function assigneeKey(id) {
+      if (id == null || id === '') return '';
+      return String(id).trim().toLowerCase();
+    }
     /** Badge only when the user has exactly one recorded auth provider. */
     function providersOf(id) {
-      const u = USER_META[id];
+      const u = userMeta(id);
       const list = Array.isArray(u?.providers) ? u.providers : [];
       return list.map(p => String(p || '').trim().toLowerCase()).filter(Boolean);
     }
@@ -312,16 +320,15 @@ const clientConfig  = {
     }
     function assigneeLabel(id) {
       if (!id) return '';
-      const u = USER_META[id];
+      const u = userMeta(id);
       if (!u) return id;
       const base = `${u.emoji ? u.emoji + ' ' : ''}${u.label}`;
       const p = soleProvider(id);
-      // Plain-text contexts: bracket marker when a single provider is set.
       return p ? `${base} [${p}]` : base;
     }
     function assigneeDisplayHtml(id) {
       if (!id) return '— unassigned —';
-      const u = USER_META[id];
+      const u = userMeta(id);
       const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
       const p = soleProvider(id);
       return p
@@ -330,21 +337,16 @@ const clientConfig  = {
     }
     function rebuildAssigneeSelect(selected) {
       if (!mAssignee) return;
-      const current = selected !== undefined ? selected : (mAssignee.value || '');
-      mAssignee.value = current && (current === '' || USER_META[current] || true) ? current : '';
-      // normalize unknown ids still show as value
-      if (current && !USER_META[current] && current !== '') {
-        mAssignee.value = current;
-      }
+      const current = assigneeKey(selected !== undefined ? selected : (mAssignee.value || ''));
+      mAssignee.value = current;
       const btnLabel = document.getElementById('m-assignee-btn-label');
       if (btnLabel) btnLabel.innerHTML = assigneeDisplayHtml(mAssignee.value || '');
-
       const menu = document.getElementById('m-assignee-menu');
       if (!menu) return;
       const rows = [];
       rows.push(`<button type="button" data-assignee-pick="" class="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${!mAssignee.value ? 'bg-slate-100 dark:bg-slate-700 font-semibold' : ''}">— unassigned —</button>`);
       for (const u of Object.values(USER_META)) {
-        const sel = mAssignee.value === u.id;
+        const sel = assigneeKey(mAssignee.value) === assigneeKey(u.id);
         rows.push(`<button type="button" data-assignee-pick="${esc(u.id)}" class="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center ${sel ? 'bg-slate-100 dark:bg-slate-700 font-semibold' : ''}">${assigneeDisplayHtml(u.id)}</button>`);
       }
       menu.innerHTML = rows.join('');
@@ -352,7 +354,7 @@ const clientConfig  = {
         b.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          mAssignee.value = b.getAttribute('data-assignee-pick') || '';
+          mAssignee.value = assigneeKey(b.getAttribute('data-assignee-pick') || '');
           if (btnLabel) btnLabel.innerHTML = assigneeDisplayHtml(mAssignee.value);
           menu.classList.add('hidden');
         });
@@ -364,7 +366,7 @@ const clientConfig  = {
         if (!res.ok) return;
         const data = await res.json();
         if (Array.isArray(data.users)) {
-          USER_META = Object.fromEntries(data.users.map(u => [u.id, u]));
+          USER_META = Object.fromEntries(data.users.map(u => [String(u.id).toLowerCase(), u]));
           rebuildAssigneeSelect(mAssignee ? mAssignee.value : '');
         }
         if (data.me && data.me.id) {
@@ -377,7 +379,7 @@ const clientConfig  = {
     window.addEventListener('klaudban:users-updated', (ev) => {
       const data = ev.detail || {};
       if (Array.isArray(data.users)) {
-        USER_META = Object.fromEntries(data.users.map(u => [u.id, u]));
+        USER_META = Object.fromEntries(data.users.map(u => [String(u.id).toLowerCase(), u]));
         rebuildAssigneeSelect(mAssignee ? mAssignee.value : '');
         renderChips?.();
         renderBoard?.();
@@ -386,7 +388,7 @@ const clientConfig  = {
     });
     function assigneeChip(id) {
       if (!id) return '';
-      const u = USER_META[id];
+      const u = userMeta(id);
       const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
       const p = soleProvider(id);
       const local = p ? localBadgeHtml(p) : '';
@@ -608,11 +610,14 @@ If the task was already in "pending-review" and you're picking it back up (revis
       }
       if (kind === 'assignee') {
         const ids = new Set(Object.keys(USER_META));
-        for (const t of tasks) { if (t.assignee) ids.add(t.assignee); }
+        for (const t of tasks) {
+          const k = assigneeKey(t.assignee);
+          if (k) ids.add(k);
+        }
         const items = [...ids].map(id => ({
           key: id,
           label: assigneeLabel(id) || id,
-          count: countMatching(t => t.assignee === id && (!filters.project || t.project === filters.project)),
+          count: countMatching(t => assigneeKey(t.assignee) === assigneeKey(id) && (!filters.project || t.project === filters.project)),
         })).sort((a, b) => {
           if (a.count !== b.count) return b.count - a.count;
           return a.label.localeCompare(b.label);
@@ -696,7 +701,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
             const sel = current === it.key;
             let labelHtml = `<span class="truncate">${esc(it.label)}</span>`;
             if (kind === 'assignee' && it.key !== '__unassigned__' && showProviderMarker(it.key)) {
-              const u = USER_META[it.key];
+              const u = userMeta(it.key);
               const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : it.key;
               labelHtml = `<span class="truncate inline-flex items-center min-w-0">${esc(base)}${localBadgeHtml(soleProvider(it.key))}</span>`;
             }
@@ -768,7 +773,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         if (current === '__unassigned__') {
           valueLabel = MSG.modal?.assignee_none || 'Unassigned';
         } else {
-          const u = USER_META[current];
+          const u = userMeta(current);
           const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : current;
           valueLabel = assigneeLabel(current);
           valueHtml = showProviderMarker(current)
@@ -817,7 +822,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
       if (filters.assignee) {
         if (filters.assignee === '__unassigned__') {
           if (t.assignee) return false;
-        } else if (t.assignee !== filters.assignee) return false;
+        } else if (assigneeKey(t.assignee) !== assigneeKey(filters.assignee)) return false;
       }
       if (filters.status) {
         // 'pending-review' vive visualmente dentro de la columna 'doing', así

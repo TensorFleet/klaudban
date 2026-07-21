@@ -168,7 +168,7 @@ function parseFile(filename: string, dir: string): Task | null {
     date:    nullableString(frontmatter.date),
     due:     nullableString(frontmatter.due),
     project: nullableString(frontmatter.project),
-    assignee: nullableString(frontmatter.assignee),
+    assignee: normalizeAssigneeField(frontmatter.assignee),
     blocked_by: nullableString(frontmatter.blocked_by),
     pos,
     claude_active,
@@ -191,6 +191,13 @@ function normalizePrio(s: string): Priority {
 function nullableString(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
+  return s.length ? s : null;
+}
+
+/** Assignee ids are always stored/compared lowercase. */
+function normalizeAssigneeField(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
   return s.length ? s : null;
 }
 
@@ -359,7 +366,7 @@ export function updateTask(
     date:       patch.date       !== undefined ? patch.date       : existing.date,
     due:        patch.due        !== undefined ? patch.due        : existing.due,
     project:    patch.project    !== undefined ? patch.project    : existing.project,
-    assignee:   patch.assignee   !== undefined ? patch.assignee   : existing.assignee,
+    assignee:   patch.assignee   !== undefined ? normalizeAssigneeField(patch.assignee) : normalizeAssigneeField(existing.assignee),
     blocked_by: patch.blocked_by !== undefined ? patch.blocked_by : existing.blocked_by,
     pos:        patch.pos        !== undefined ? patch.pos        : existing.pos,
     claude_active: patch.claude_active !== undefined ? patch.claude_active : existing.claude_active,

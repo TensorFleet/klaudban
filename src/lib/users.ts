@@ -186,20 +186,29 @@ export function ensureUser(identity: RequestIdentity): TeamUser {
 }
 
 /**
+ * Normalize an assignee id for storage and lookup (trim + lowercase).
+ * null/undefined/blank → null (unassigned).
+ */
+export function normalizeAssigneeId(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw !== 'string') return null;
+  const id = raw.trim().toLowerCase();
+  return id === '' ? null : id;
+}
+
+/**
  * Resolve assignee on task create.
  *
  * - Body **omits** `assignee` → default to signed-in user (if any).
  * - Body sets `assignee: null` / `""` → explicit unassigned.
- * - Body sets a non-empty string → that id.
+ * - Body sets a non-empty string → that id (normalized).
  */
 export function resolveAssigneeForCreate(
   headers: Headers,
   body: Record<string, unknown>,
 ): string | null {
   if (Object.prototype.hasOwnProperty.call(body, 'assignee')) {
-    const a = body.assignee;
-    if (a == null || String(a).trim() === '') return null;
-    return String(a).trim().toLowerCase();
+    return normalizeAssigneeId(body.assignee);
   }
   // Missing key: prefer logged-in principal.
   return ensureUserFromHeaders(headers)?.id ?? null;
@@ -213,9 +222,8 @@ export function defaultAssigneeFromHeaders(
   headers: Headers,
   assignee: string | null | undefined,
 ): string | null {
-  if (assignee != null && String(assignee).trim() !== '') {
-    return String(assignee).trim().toLowerCase();
-  }
+  const normalized = normalizeAssigneeId(assignee);
+  if (normalized) return normalized;
   const user = ensureUserFromHeaders(headers);
   return user?.id ?? null;
 }
