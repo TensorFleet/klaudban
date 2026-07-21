@@ -119,9 +119,9 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
         <!-- Self preview: label editable, id read-only (auth via proxy headers). -->
         <div id="self-preview" class="relative hidden">
           <button id="self-preview-btn" type="button"
-                  class="max-w-[11rem] sm:max-w-[14rem] h-9 px-2.5 rounded-xl flex items-center gap-1.5 bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-soft">
+                  class="max-w-[14rem] sm:max-w-[18rem] h-9 px-2.5 rounded-xl flex items-center gap-1.5 bg-white dark:bg-slate-800 ring-1 ring-slate-200 dark:ring-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-soft">
             <span id="self-preview-emoji" class="text-sm leading-none shrink-0">👤</span>
-            <span id="self-preview-label" class="text-xs font-semibold truncate"></span>
+            <span id="self-preview-label" class="text-xs font-semibold truncate min-w-0 inline-flex items-center"></span>
           </button>
           <div id="self-preview-panel" class="hidden absolute right-0 mt-2 w-[280px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-drag ring-1 ring-slate-200/60 dark:ring-slate-700/60 z-50 p-3.5">
             <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">You</p>
@@ -220,6 +220,26 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
 
       let me = null;
 
+      /** Same grey pill as the assignee list — only when exactly one provider. */
+      function soleProvider(user) {
+        const list = Array.isArray(user?.providers)
+          ? user.providers.map((p) => String(p || '').trim().toLowerCase()).filter(Boolean)
+          : [];
+        return list.length === 1 ? list[0] : null;
+      }
+      function providerBadgeHtml(text) {
+        const t = String(text || '').replace(/[<>&"]/g, '');
+        if (!t) return '';
+        return `<span aria-label="${t} provider" style="display:inline-block;margin-left:4px;padding:0 5px;border-radius:999px;background:#e2e8f0;color:#64748b !important;-webkit-text-fill-color:#64748b;font-weight:600;font-size:9px;line-height:1.4;letter-spacing:0.02em;vertical-align:middle;flex-shrink:0">${t}</span>`;
+      }
+      function escText(s) {
+        return String(s || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
       function paint(user) {
         me = user;
         if (!user) {
@@ -228,7 +248,11 @@ const claudeEnabled = CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl;
         }
         wrap.classList.remove('hidden');
         emojiEl.textContent = user.emoji || '👤';
-        labelEl.textContent = user.label || user.id;
+        const name = user.label || user.id || '';
+        const p = soleProvider(user);
+        labelEl.innerHTML = p
+          ? `<span class="truncate">${escText(name)}</span>${providerBadgeHtml(p)}`
+          : escText(name);
         idInput.value = user.id || '';
         labelIn.value = user.label || '';
         errEl.classList.add('hidden');
