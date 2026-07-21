@@ -84,14 +84,35 @@ export function reloadUsersFromDisk(): void {
 function persistUsers(next: TeamUser[]): void {
   const path = configPath();
   let base: Record<string, unknown> = {};
-  try {
-    if (existsSync(path)) {
-      base = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+
+  if (existsSync(path)) {
+    let rawText: string;
+    try {
+      rawText = readFileSync(path, 'utf8');
+    } catch (err) {
+      // Do not overwrite an existing config we cannot read.
+      throw new Error(
+        `persistUsers: cannot read ${CONFIG_FILENAME}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-  } catch {
-    base = {};
+    try {
+      const parsed = JSON.parse(rawText) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        base = parsed as Record<string, unknown>;
+      } else {
+        throw new Error('root JSON value is not an object');
+      }
+    } catch (err) {
+      // Refuse to write — a parse failure must never collapse the file to { users }.
+      throw new Error(
+        `persistUsers: ${CONFIG_FILENAME} is not valid JSON; refusing to overwrite (fix the file first): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
-  // Preserve non-users keys; replace users with the authoritative in-memory list.
+
+  // Preserve every non-users key; replace users with the in-memory list.
   base.users = next;
   writeFileSync(path, JSON.stringify(base, null, 2) + '\n', 'utf8');
 }
