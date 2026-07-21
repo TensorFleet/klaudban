@@ -158,9 +158,33 @@ restart is the surest way to refresh in-memory state:
 systemctl --user restart klaudban.service   # if deployed that way
 ```
 
+## Reverse-proxy identity headers
+
+When the board sits behind AuthCrunch/Caddy (or similar), the proxy sends
+identity headers. Klaudban does **not** validate sessions itself — trust the
+proxy and bind the app to loopback.
+
+| Header | Used for |
+|--------|----------|
+| `X-Actor` | User id (email). Preferred stable id for `assignee` / team list |
+| `X-Token-User-Email` | Same (AuthCrunch claim inject) |
+| `X-Token-User-Name` | Display label when present |
+| `X-Auth-Provider` | IdP string → `users[].providers[]` (`google`, `local`, `tailscale`, …) |
+| `X-Token-User-Origin` | Same as provider when claims inject origin |
+
+**Middleware conventions (TensorFleet Caddyfile):**
+
+- **Tailscale Serve path:** `X-Actor` = `Tailscale-User-Login`; provider headers set to **`tailscale`**.
+- **AuthCrunch path:** `X-Actor` = `X-Token-User-Email`; `X-Auth-Provider` = origin claim.
+
+WebDAV is not part of klaudban. KiwiFS WebDAV uses a separate proxy header
+**`X-Auth-Realm: local`** (AuthCrunch-only) so basic auth hits the local realm;
+that header is stripped before KiwiFS. See the KiwiFS README “Reverse-proxy
+identity headers” section.
+
 ## What's NOT exposed
 
-- No auth, no per-user permissions. Anyone with network access to `apiBaseUrl` can read and write. See the Security note in the main README.
+- No built-in login UI. Anyone with network access to `apiBaseUrl` can call the API unless a reverse proxy enforces auth (and preferably injects the headers above). See the Security note in the main README.
 - No real-time push (SSE / WebSocket). The board polls every 5s; the agent's `curl` updates the file immediately, but the UI takes up to 5s to reflect.
-- No "agent identity" — every call looks the same. If you want a per-agent activity log, write it as a comment in the task body.
+- No per-agent API keys — browser identity comes from proxy headers; agent `curl`s without headers look unauthenticated.
 - No HTTP admin API for user migration yet — use `npm run user:migrate` / `scripts/migrate-user-id.mjs` only.

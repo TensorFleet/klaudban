@@ -196,6 +196,31 @@ Safe ways to run it:
 - **Behind Tailscale, WireGuard, or a VPN.** The tunnel already encrypts traffic between nodes end-to-end, so plain HTTP inside is fine. This is the typical "share your kanban between laptop and phone" setup.
 - **Behind a reverse proxy with TLS + auth.** Run Caddy / Traefik / nginx with `basic_auth`, Authelia, or Cloudflare Access in front. The proxy handles TLS and authentication; Klaudban itself listens on localhost.
 
+### Reverse-proxy identity headers
+
+Klaudban itself still has **no login UI**. When a trusted proxy sits in front,
+it should send identity on every browser/API request. Klaudban reads these
+headers (see `src/lib/auth.ts`) to auto-create/update team users, default
+assignees, and provider badges.
+
+| Header | Purpose |
+|--------|---------|
+| **`X-Actor`** | Primary user id (email, lowercased). Also accepted as identity if claim email is absent. |
+| **`X-Token-User-Email`** | Same as actor when the proxy injects AuthCrunch claims |
+| **`X-Token-User-Name`** | Optional display name |
+| **`X-Auth-Provider`** | IdP label for `users[].providers[]` (e.g. `google`, `local`, **`tailscale`**) |
+| **`X-Token-User-Origin`** | Alternate/same as provider (AuthCrunch origin claim) |
+
+**Typical middleware paths:**
+
+| Path | Headers klaudban receives |
+|------|---------------------------|
+| Tailscale Serve (trusted) | `X-Actor` ← `Tailscale-User-Login`; `X-Auth-Provider` / `X-Token-User-Origin` = **`tailscale`**; optional `X-Token-User-Name` ← `Tailscale-User-Name` |
+| AuthCrunch session | `X-Actor` ← email claim; `X-Auth-Provider` ← origin (`google` / `local` / …) |
+
+Without these headers, `/api/me` has `me: null` and no auto-user is created.
+Bind klaudban to **`127.0.0.1`** when only the proxy should reach it.
+
 **Do not bind Klaudban directly to a public interface over plain HTTP.** There is no authentication, no rate limiting, no audit log — every file under your vault path is open to anyone who knows the URL.
 
 ## Roadmap
