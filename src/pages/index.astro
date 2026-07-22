@@ -2,17 +2,21 @@
 import Layout from '../layouts/Layout.astro';
 import { listAll, listProjects } from '../lib/tasks';
 import { listProjectColors } from '../lib/projects';
-import { CONFIG, TEAM_USERS } from '../lib/config';
+import { CONFIG } from '../lib/config';
+import { ensureUserFromHeaders, listUsers } from '../lib/users';
 import { t, MESSAGES } from '../i18n';
 
+// Auto-register the reverse-proxy principal (if any) before rendering the board.
+const currentUser = ensureUserFromHeaders(Astro.request.headers);
 const tasks         = listAll();
 const projects      = listProjects();
-const teamUsers     = TEAM_USERS;
+const teamUsers     = listUsers();
 const projectColors = listProjectColors();
 const clientConfig  = {
   timezone:      CONFIG.ui.timezone,
   claudeEnabled: CONFIG.claude.enabled && !!CONFIG.claude.apiBaseUrl,
   apiBaseUrl:    CONFIG.claude.apiBaseUrl ?? '',
+  currentUserId: currentUser?.id ?? null,
 };
 ---
 <Layout title="Board">
@@ -135,10 +139,16 @@ const clientConfig  = {
             </div>
             <div>
               <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.assignee")}</label>
-              <select id="m-assignee" class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all">
-                <option value="">— unassigned —</option>
-                {teamUsers.map(u => <option value={u.id}>{u.emoji ? `${u.emoji} ` : ''}{u.label}</option>)}
-              </select>
+              <!-- Custom picker (native <select> cannot grey part of an option). -->
+              <div id="m-assignee-wrap" class="relative">
+                <input type="hidden" id="m-assignee" value="" />
+                <button type="button" id="m-assignee-btn"
+                        class="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-brand-400 focus:ring-4 focus:ring-brand-100 dark:focus:ring-brand-900/40 outline-none transition-all flex items-center justify-between gap-2 text-left">
+                  <span id="m-assignee-btn-label" class="truncate min-w-0 flex items-center">— unassigned —</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-50 shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div id="m-assignee-menu" class="hidden absolute left-0 right-0 mt-1 z-50 max-h-56 overflow-y-auto bg-white dark:bg-slate-800 rounded-xl shadow-drag ring-1 ring-slate-200 dark:ring-slate-700 p-1 scrollbar-thin"></div>
+              </div>
             </div>
             <div>
               <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("modal.labels.blocked_by")}</label>
@@ -281,16 +291,109 @@ const clientConfig  = {
       if (d <= 30)    return { txt: inDays, cls: 'text-slate-600 dark:text-slate-400' };
       return            { txt: inDays, cls: 'text-slate-400 dark:text-slate-500' };
     }
-    const USER_META = Object.fromEntries((teamUsersList || []).map(u => [u.id, u]));
+    let USER_META = Object.fromEntries((teamUsersList || []).map(u => [String(u.id).toLowerCase(), u]));
+    function userMeta(id) {
+      if (!id) return null;
+      return USER_META[String(id).trim().toLowerCase()] || null;
+    }
+    function assigneeKey(id) {
+      if (id == null || id === '') return '';
+      return String(id).trim().toLowerCase();
+    }
+    /** Badge only when the user has exactly one recorded auth provider. */
+    function providersOf(id) {
+      const u = userMeta(id);
+      const list = Array.isArray(u?.providers) ? u.providers : [];
+      return list.map(p => String(p || '').trim().toLowerCase()).filter(Boolean);
+    }
+    function soleProvider(id) {
+      const list = providersOf(id);
+      return list.length === 1 ? list[0] : null;
+    }
+    function showProviderMarker(id) {
+      return !!soleProvider(id);
+    }
+    function localBadgeHtml(text) {
+      const t = String(text || 'local').replace(/[<>&"]/g, '');
+      // Self-contained styles: parent text-* / font-semibold must not win.
+      return `<span aria-label="${t} provider" style="display:inline-block;margin-left:4px;padding:0 5px;border-radius:999px;background:#e2e8f0;color:#64748b !important;-webkit-text-fill-color:#64748b;font-weight:600;font-size:9px;line-height:1.4;letter-spacing:0.02em;vertical-align:middle">${t}</span>`;
+    }
     function assigneeLabel(id) {
       if (!id) return '';
-      const u = USER_META[id];
-      return u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
+      const u = userMeta(id);
+      if (!u) return id;
+      const base = `${u.emoji ? u.emoji + ' ' : ''}${u.label}`;
+      const p = soleProvider(id);
+      return p ? `${base} [${p}]` : base;
     }
+    function assigneeDisplayHtml(id) {
+      if (!id) return '— unassigned —';
+      const u = userMeta(id);
+      const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
+      const p = soleProvider(id);
+      return p
+        ? `<span class="inline-flex items-center min-w-0">${esc(base)}${localBadgeHtml(p)}</span>`
+        : esc(base);
+    }
+    function rebuildAssigneeSelect(selected) {
+      if (!mAssignee) return;
+      const current = assigneeKey(selected !== undefined ? selected : (mAssignee.value || ''));
+      mAssignee.value = current;
+      const btnLabel = document.getElementById('m-assignee-btn-label');
+      if (btnLabel) btnLabel.innerHTML = assigneeDisplayHtml(mAssignee.value || '');
+      const menu = document.getElementById('m-assignee-menu');
+      if (!menu) return;
+      const rows = [];
+      rows.push(`<button type="button" data-assignee-pick="" class="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${!mAssignee.value ? 'bg-slate-100 dark:bg-slate-700 font-semibold' : ''}">— unassigned —</button>`);
+      for (const u of Object.values(USER_META)) {
+        const sel = assigneeKey(mAssignee.value) === assigneeKey(u.id);
+        rows.push(`<button type="button" data-assignee-pick="${esc(u.id)}" class="w-full text-left px-2.5 py-1.5 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center ${sel ? 'bg-slate-100 dark:bg-slate-700 font-semibold' : ''}">${assigneeDisplayHtml(u.id)}</button>`);
+      }
+      menu.innerHTML = rows.join('');
+      menu.querySelectorAll('[data-assignee-pick]').forEach((b) => {
+        b.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          mAssignee.value = assigneeKey(b.getAttribute('data-assignee-pick') || '');
+          if (btnLabel) btnLabel.innerHTML = assigneeDisplayHtml(mAssignee.value);
+          menu.classList.add('hidden');
+        });
+      });
+    }
+    async function syncAuthUser() {
+      try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.users)) {
+          USER_META = Object.fromEntries(data.users.map(u => [String(u.id).toLowerCase(), u]));
+          rebuildAssigneeSelect(mAssignee ? mAssignee.value : '');
+        }
+        if (data.me && data.me.id) {
+          clientConfig.currentUserId = data.me.id;
+        }
+      } catch {
+        // Offline / no proxy auth — leave the static user list alone.
+      }
+    }
+    window.addEventListener('klaudban:users-updated', (ev) => {
+      const data = ev.detail || {};
+      if (Array.isArray(data.users)) {
+        USER_META = Object.fromEntries(data.users.map(u => [String(u.id).toLowerCase(), u]));
+        rebuildAssigneeSelect(mAssignee ? mAssignee.value : '');
+        renderChips?.();
+        renderBoard?.();
+      }
+      if (data.me && data.me.id) clientConfig.currentUserId = data.me.id;
+    });
     function assigneeChip(id) {
       if (!id) return '';
-      const label = assigneeLabel(id);
-      return `<span class="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 px-1.5 py-0.5 rounded-md font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800 truncate max-w-[150px]" title="${esc(label)}">${esc(label)}</span>`;
+      const u = userMeta(id);
+      const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : id;
+      const p = soleProvider(id);
+      const local = p ? localBadgeHtml(p) : '';
+      const title = assigneeLabel(id);
+      return `<span class="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 px-1.5 py-0.5 rounded-md font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800 truncate max-w-[200px] inline-flex items-center" title="${esc(title)}"><span>${esc(base)}</span>${local}</span>`;
     }
     function projectChip(name) {
       let h = 0;
@@ -506,12 +609,15 @@ If the task was already in "pending-review" and you're picking it back up (revis
         }));
       }
       if (kind === 'assignee') {
-        const ids = new Set((teamUsersList || []).map(u => u.id));
-        for (const t of tasks) { if (t.assignee) ids.add(t.assignee); }
+        const ids = new Set(Object.keys(USER_META));
+        for (const t of tasks) {
+          const k = assigneeKey(t.assignee);
+          if (k) ids.add(k);
+        }
         const items = [...ids].map(id => ({
           key: id,
           label: assigneeLabel(id) || id,
-          count: countMatching(t => t.assignee === id && (!filters.project || t.project === filters.project)),
+          count: countMatching(t => assigneeKey(t.assignee) === assigneeKey(id) && (!filters.project || t.project === filters.project)),
         })).sort((a, b) => {
           if (a.count !== b.count) return b.count - a.count;
           return a.label.localeCompare(b.label);
@@ -593,6 +699,12 @@ If the task was already in "pending-review" and you're picking it back up (revis
             // una tarea sobre ese proyecto vacío). Solo se ven más tenues.
             const empty = it.count === 0 && current !== it.key;
             const sel = current === it.key;
+            let labelHtml = `<span class="truncate">${esc(it.label)}</span>`;
+            if (kind === 'assignee' && it.key !== '__unassigned__' && showProviderMarker(it.key)) {
+              const u = userMeta(it.key);
+              const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : it.key;
+              labelHtml = `<span class="truncate inline-flex items-center min-w-0">${esc(base)}${localBadgeHtml(soleProvider(it.key))}</span>`;
+            }
             return `<button data-pop-select="${esc(it.key)}"
               class="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 sel   ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900' :
@@ -602,7 +714,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
               <span class="flex items-center gap-1.5 min-w-0">
                 ${it.dotCls ? `<span class="w-1.5 h-1.5 rounded-full ${it.dotCls} shrink-0 ${empty ? 'opacity-50' : ''}"></span>` : ''}
                 ${it.hasVenciendo ? '<span class="shrink-0">🔴</span>' : ''}
-                <span class="truncate">${esc(it.label)}</span>
+                ${labelHtml}
               </span>
               <span class="tabular-nums text-[10px] ${sel ? 'opacity-70' : 'opacity-50'} shrink-0">${it.count}</span>
             </button>`;
@@ -650,18 +762,31 @@ If the task was already in "pending-review" and you're picking it back up (revis
       }
       let leadDot = '';
       let valueLabel = current;
+      let valueHtml = '';
       if (kind === 'priority') {
         const m = PRIO_META[current];
         leadDot = `<span class="w-1.5 h-1.5 rounded-full ${m.dotCls} shrink-0"></span>`;
         valueLabel = m.label;
       } else if (kind === 'due') {
         valueLabel = DUE_META[current]?.label ?? current;
+      } else if (kind === 'assignee') {
+        if (current === '__unassigned__') {
+          valueLabel = MSG.modal?.assignee_none || 'Unassigned';
+        } else {
+          const u = userMeta(current);
+          const base = u ? `${u.emoji ? u.emoji + ' ' : ''}${u.label}` : current;
+          valueLabel = assigneeLabel(current);
+          valueHtml = showProviderMarker(current)
+            ? `<span class="truncate inline-flex items-center min-w-0">${esc(base)}${localBadgeHtml(soleProvider(current))}</span>`
+            : '';
+        }
       }
+      const valueInner = valueHtml || `<span class="truncate">${esc(valueLabel)}</span>`;
       return `<button data-filter-pill="${kind}"
         class="text-xs pl-2.5 pr-1 py-2 rounded-lg font-semibold ring-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 ring-slate-900 dark:ring-slate-100 shadow-lift transition-all flex items-center gap-1.5 max-w-[220px]">
         <span class="text-[10px] uppercase tracking-wider opacity-60 shrink-0">${FILTER_LABEL[kind]}:</span>
         ${leadDot}
-        <span class="truncate">${esc(valueLabel)}</span>
+        ${valueInner}
         <span data-pill-clear title="Remove filter" class="ml-0.5 w-5 h-5 flex items-center justify-center rounded hover:bg-white/20 dark:hover:bg-black/20 transition-colors text-base leading-none shrink-0">×</span>
       </button>`;
     }
@@ -697,7 +822,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
       if (filters.assignee) {
         if (filters.assignee === '__unassigned__') {
           if (t.assignee) return false;
-        } else if (t.assignee !== filters.assignee) return false;
+        } else if (assigneeKey(t.assignee) !== assigneeKey(filters.assignee)) return false;
       }
       if (filters.status) {
         // 'pending-review' vive visualmente dentro de la columna 'doing', así
@@ -1250,11 +1375,31 @@ If the task was already in "pending-review" and you're picking it back up (revis
     const mDueHint    = document.getElementById('m-due-hint');
     const mProject    = document.getElementById('m-project');
     const mAssignee   = document.getElementById('m-assignee');
+    const mAssigneeBtn = document.getElementById('m-assignee-btn');
+    const mAssigneeMenu = document.getElementById('m-assignee-menu');
+    const mAssigneeWrap = document.getElementById('m-assignee-wrap');
     const mBlockedBy  = document.getElementById('m-blocked-by');
     const mBody       = document.getElementById('m-body');
     const mPreview    = document.getElementById('m-preview');
     const mDelete     = document.getElementById('m-delete');
     const mCopyPrompt = document.getElementById('m-copy-prompt');
+    // Custom assignee picker open/close
+    if (mAssigneeBtn && mAssigneeMenu && mAssigneeWrap) {
+      mAssigneeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        rebuildAssigneeSelect(mAssignee.value || '');
+        mAssigneeMenu.classList.toggle('hidden');
+      });
+      document.addEventListener('click', (e) => {
+        if (!mAssigneeMenu.classList.contains('hidden') && !mAssigneeWrap.contains(e.target)) {
+          mAssigneeMenu.classList.add('hidden');
+        }
+      });
+    }
+    rebuildAssigneeSelect('');
+    // After the picker exists, refresh users from auth headers / disk.
+    syncAuthUser();
     let mStatus = 'pending';
     let mPriority = 'normal';
     let mColor = null; // null = sin color
@@ -1379,6 +1524,7 @@ If the task was already in "pending-review" and you're picking it back up (revis
         mDue.value       = t.due ?? '';
         mProject.value   = t.project ?? '';
         mAssignee.value  = t.assignee ?? '';
+        rebuildAssigneeSelect(mAssignee.value);
         mBlockedBy.value = t.blocked_by ?? '';
         mBody.value      = t.body.replace(/^\n+/, '');
         mDelete.classList.remove('invisible');
@@ -1394,7 +1540,8 @@ If the task was already in "pending-review" and you're picking it back up (revis
         mColor = defaults.color ?? null;
         mDue.value = defaults.due ?? (filters.due === 'today' ? todayLima() : '');
         mProject.value = defaults.project ?? (filters.project || '');
-        mAssignee.value = defaults.assignee ?? '';
+        mAssignee.value = defaults.assignee ?? clientConfig.currentUserId ?? '';
+        rebuildAssigneeSelect(mAssignee.value);
         mBlockedBy.value = '';
         mBody.value = '';
         mDelete.classList.add('invisible');

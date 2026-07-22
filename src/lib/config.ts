@@ -26,7 +26,8 @@
  * name and the value used for the `type:` frontmatter prefix (`project-<key>`).
  *
  * Users are optional. When empty, the assignee picker stays unassigned-only
- * until you add members in klaudban.config.json.
+ * until members appear — either configured in klaudban.config.json or
+ * auto-created from reverse-proxy auth headers (see src/lib/users.ts).
  */
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -45,6 +46,13 @@ export interface TeamUser {
   id:    string;
   label: string;
   emoji?: string;
+  /**
+   * AuthCrunch origins / IdPs linked to this id over time
+   * (e.g. ["local"], ["google"], ["google","local"]).
+   * When exactly one provider is present the UI shows a grey badge;
+   * multiple providers hide the badge (linked accounts).
+   */
+  providers?: string[];
 }
 
 export interface AppConfig {

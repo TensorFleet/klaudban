@@ -112,8 +112,79 @@ Then a message to the user: *"Bumped Astro and rebuilt. Restart needed (`sudo sy
 
 The board's polling + notification panel exists for **you** (the human), not for the agent. The agent fires events; the bell shows them. If you want the agent to react to events on the board (you moved a card, you added a comment), that's not built yet — see Roadmap in the main README.
 
+## User id migration (CLI / agents)
+
+Rename or merge a user id across `klaudban.config.json` **and** task frontmatter
+`assignee:` fields. No UI — CLI only (safe for humans and AI agents).
+
+```bash
+# Always dry-run first
+npm run user:migrate -- <fromId> <toId> --dry-run
+
+# Apply (requires --yes)
+npm run user:migrate -- <fromId> <toId> --yes
+
+# Or directly:
+node scripts/migrate-user-id.mjs <fromId> <toId> --dry-run
+node scripts/migrate-user-id.mjs <fromId> <toId> --yes
+```
+
+### Behavior
+| Case | Result |
+|------|--------|
+| target **missing** | rename source user entry → `toId` |
+| target **exists** | **merge**: union `providers[]`, merge label/emoji, drop source entry |
+| either missing from config | still rewrites task `assignee:` values |
+
+- **Tasks:** every `assignee: <fromId>` under `vault.tasksDir` → `<toId>`
+- **Label rule:** keep target label unless it is a placeholder
+  (empty, or equals the full id). Email local-part alone is **not** treated
+  as a placeholder (so a real name like "Levi" for `levi@…` is kept).
+- **Providers:** unique union of both sides
+- **Safety:** refuses to write without `--yes`; use `--dry-run` to print the plan as JSON.
+  Malformed task YAML is listed in `skippedFiles`; `--yes` aborts unless `--force`.
+  YAML uses CORE_SCHEMA so `due:` / `date:` stay strings.
+- **cwd:** run from the klaudban app directory (where `klaudban.config.json` lives),
+  or pass `--cwd /path/to/app`
+
+### Agent note
+When consolidating a config-only handle into an auth email (or linking a second
+IdP onto an existing email id), use this CLI instead of hand-editing markdown.
+After a successful migrate, restart is **not** required for tasks (files on disk);
+the running process reloads users from disk on the next ensure/list path, but a
+restart is the surest way to refresh in-memory state:
+
+```bash
+systemctl --user restart klaudban.service   # if deployed that way
+```
+
+## Reverse-proxy identity headers
+
+When the board sits behind AuthCrunch/Caddy (or similar), the proxy sends
+identity headers. Klaudban does **not** validate sessions itself — trust the
+proxy and bind the app to loopback.
+
+| Header | Used for |
+|--------|----------|
+| `X-Actor` | User id (email). Preferred stable id for `assignee` / team list |
+| `X-Token-User-Email` | Same (AuthCrunch claim inject) |
+| `X-Token-User-Name` | Display label when present |
+| `X-Auth-Provider` | IdP string → `users[].providers[]` (`google`, `local`, `tailscale`, …) |
+| `X-Token-User-Origin` | Same as provider when claims inject origin |
+
+**Middleware conventions (TensorFleet Caddyfile):**
+
+- **Tailscale Serve path:** `X-Actor` = `Tailscale-User-Login`; provider headers set to **`tailscale`**.
+- **AuthCrunch path:** `X-Actor` = `X-Token-User-Email`; `X-Auth-Provider` = origin claim.
+
+WebDAV is not part of klaudban. KiwiFS WebDAV uses a separate proxy header
+**`X-Auth-Realm: local`** (AuthCrunch-only) so basic auth hits the local realm;
+that header is stripped before KiwiFS. See the KiwiFS README “Reverse-proxy
+identity headers” section.
+
 ## What's NOT exposed
 
-- No auth, no per-user permissions. Anyone with network access to `apiBaseUrl` can read and write. See the Security note in the main README.
+- No built-in login UI. Anyone with network access to `apiBaseUrl` can call the API unless a reverse proxy enforces auth (and preferably injects the headers above). See the Security note in the main README.
 - No real-time push (SSE / WebSocket). The board polls every 5s; the agent's `curl` updates the file immediately, but the UI takes up to 5s to reflect.
-- No "agent identity" — every call looks the same. If you want a per-agent activity log, write it as a comment in the task body.
+- No per-agent API keys — browser identity comes from proxy headers; agent `curl`s without headers look unauthenticated.
+- No HTTP admin API for user migration yet — use `npm run user:migrate` / `scripts/migrate-user-id.mjs` only.
