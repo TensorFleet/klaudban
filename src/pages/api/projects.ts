@@ -6,7 +6,6 @@
 import type { APIRoute } from 'astro';
 import { listProjects } from '../../lib/tasks';
 import { listAll, createProject, CATEGORIES, type Category } from '../../lib/projects';
-import { withWriteLock } from '../../lib/write-lock';
 
 export const prerender = false;
 
@@ -38,9 +37,7 @@ export const POST: APIRoute = async ({ request }) => {
     return bad(`category debe ser una de: ${CATEGORIES.join(', ')}`);
   }
   try {
-    const p = await withWriteLock(() =>
-      createProject({ name: name.trim(), category: category as Category, slug }),
-    );
+    const p = createProject({ name: name.trim(), category: category as Category, slug });
     return new Response(JSON.stringify(p), {
       status: 201, headers: { 'Content-Type': 'application/json' },
     });

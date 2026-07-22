@@ -5,7 +5,6 @@ import {
   type Status, type Priority, type CardColor,
 } from '../../lib/tasks';
 import { resolveAssigneeForCreate, ensureUserFromHeaders, normalizeAssigneeId } from '../../lib/users';
-import { withWriteLock } from '../../lib/write-lock';
 
 // Aliases para los ops de Claude: el prompt usa formas cortas (start/review/done/stop)
 // para curl menos ruidoso; los `claude_*` se mantienen por compat con prompts
@@ -34,11 +33,9 @@ function ok(data: unknown) {
   });
 }
 
-export const GET: APIRoute = async ({ url, request }) => {
-  // May create/update users.json — same write channel as vault mutations.
-  await withWriteLock(() => {
-    ensureUserFromHeaders(request.headers);
-  });
+export const GET: APIRoute = ({ url, request }) => {
+  // Side-effect: register the reverse-proxy principal if present.
+  ensureUserFromHeaders(request.headers);
   const file = url.searchParams.get('file');
   if (file) {
     const t = getOne(file);
@@ -53,19 +50,17 @@ export const POST: APIRoute = async ({ request }) => {
   if (!body) return bad('body inválido');
   if (!body.title?.trim()) return bad('title requerido');
   try {
-    const t = await withWriteLock(() => {
-      const assignee = resolveAssigneeForCreate(request.headers, body as Record<string, unknown>);
-      return createTask({
-        title:      body.title,
-        status:     validStatus(body.status),
-        priority:   validPriority(body.priority),
-        due:        body.due ?? null,
-        project:    body.project ?? null,
-        assignee,
-        blocked_by: body.blocked_by ?? null,
-        color:      validColor(body.color),
-        body:       body.body,
-      });
+    const assignee = resolveAssigneeForCreate(request.headers, body as Record<string, unknown>);
+    const t = createTask({
+      title:      body.title,
+      status:     validStatus(body.status),
+      priority:   validPriority(body.priority),
+      due:        body.due ?? null,
+      project:    body.project ?? null,
+      assignee,
+      blocked_by: body.blocked_by ?? null,
+      color:      validColor(body.color),
+      body:       body.body,
     });
     return ok(t);
   } catch (e) {
@@ -85,78 +80,78 @@ export const PATCH: APIRoute = async ({ url, request }) => {
 
   // Reorder no requiere `file` (afecta varios)
   if (op === 'reorder' && Array.isArray(body.files)) {
-    try {
-      const updated = await withWriteLock(() => reorderColumn(body.files as string[]));
-      return ok({ updated });
-    } catch (e) {
-      return bad(String((e as Error).message ?? e), 500);
-    }
+    try { return ok({ updated: reorderColumn(body.files as string[]) }); }
+    catch (e) { return bad(String((e as Error).message ?? e), 500); }
   }
 
   const file = url.searchParams.get('file');
   if (!file) return bad('file requerido');
 
   try {
-    const result = await withWriteLock(() => {
-      if (op === 'move' && body.status) {
-        const s = validStatus(body.status);
-        if (!s) throw new Error('status inválido');
-        return moveToStatus(file, s);
+    // Operaciones especiales
+    if (op === 'move' && body.status) {
+      const s = validStatus(body.status);
+      if (!s) return bad('status inválido');
+      return ok(moveToStatus(file, s));
+    }
+    if (op === 'toggle_subtask' && typeof body.line === 'number') {
+      return ok(toggleSubtask(file, body.line));
+    }
+    if (op === 'claude_start') {
+      const current = getOne(file);
+      if (!current) return bad('no existe', 404);
+      // Si está en pending o pending-review, moverla a doing antes de prender
+      // el flag. pending-review = retomar tras revisión: el usuario pidió
+      // cambios o Claude vuelve por su cuenta, debe pintar naranja de nuevo.
+      if (current.status === 'pending' || current.status === 'pending-review') {
+        const moved = moveToStatus(file, 'doing');
+        return ok(updateTask(moved.file, { claude_active: true }));
       }
-      if (op === 'toggle_subtask' && typeof body.line === 'number') {
-        return toggleSubtask(file, body.line);
-      }
-      if (op === 'claude_start') {
-        const current = getOne(file);
-        if (!current) throw Object.assign(new Error('no existe'), { status: 404 });
-        if (current.status === 'pending' || current.status === 'pending-review') {
-          const moved = moveToStatus(file, 'doing');
-          return updateTask(moved.file, { claude_active: true });
-        }
-        return updateTask(file, { claude_active: true });
-      }
-      if (op === 'claude_review') {
-        return moveToStatus(file, 'pending-review');
-      }
-      if (op === 'claude_done') {
-        return moveToStatus(file, 'done');
-      }
-      if (op === 'claude_stop') {
-        return updateTask(file, { claude_active: false });
-      }
-      const assigneePatch =
-        body.assignee === undefined
-          ? undefined
-          : normalizeAssigneeId(body.assignee);
-      return updateTask(file, {
-        title:      body.title,
-        status:     validStatus(body.status),
-        priority:   validPriority(body.priority),
-        date:       body.date,
-        due:        body.due,
-        project:    body.project,
-        assignee:   assigneePatch,
-        blocked_by: body.blocked_by,
-        color:      body.color === undefined ? undefined : validColor(body.color),
-        body:       body.body,
-      });
+      return ok(updateTask(file, { claude_active: true }));
+    }
+    if (op === 'claude_review') {
+      // Claude termina pero queda algo que requiere input del usuario (sudo,
+      // decisión, deploy manual). Va a `pending-review` para que el usuario
+      // resuelva, eventualmente Claude o el usuario la cierra con op=done.
+      return ok(moveToStatus(file, 'pending-review'));
+    }
+    if (op === 'claude_done') {
+      // Cierre real: la tarea está hecha, verificada, sin pendientes del
+      // usuario. Mueve a `tareas/done/`. moveToStatus limpia claude_active.
+      return ok(moveToStatus(file, 'done'));
+    }
+    if (op === 'claude_stop') {
+      // Compat: limpia solo el flag sin mover. Prompts viejos lo siguen usando.
+      return ok(updateTask(file, { claude_active: false }));
+    }
+    // Update general
+    const assigneePatch =
+      body.assignee === undefined
+        ? undefined
+        : normalizeAssigneeId(body.assignee);
+    const t = updateTask(file, {
+      title:      body.title,
+      status:     validStatus(body.status),
+      priority:   validPriority(body.priority),
+      date:       body.date,
+      due:        body.due,
+      project:    body.project,
+      assignee:   assigneePatch,
+      blocked_by: body.blocked_by,
+      color:      body.color === undefined ? undefined : validColor(body.color),
+      body:       body.body,
     });
-    return ok(result);
+    return ok(t);
   } catch (e) {
-    const err = e as Error & { status?: number };
-    if (err.message === 'status inválido') return bad(err.message);
-    if (err.message === 'no existe') return bad(err.message, 404);
-    return bad(String(err.message ?? e), 500);
+    return bad(String((e as Error).message ?? e), 500);
   }
 };
 
-export const DELETE: APIRoute = async ({ url }) => {
+export const DELETE: APIRoute = ({ url }) => {
   const file = url.searchParams.get('file');
   if (!file) return bad('file requerido');
   try {
-    await withWriteLock(() => {
-      deleteTask(file);
-    });
+    deleteTask(file);
     return ok({ ok: true });
   } catch (e) {
     return bad(String((e as Error).message ?? e), 500);

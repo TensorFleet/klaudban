@@ -5,7 +5,6 @@
  */
 import type { APIRoute } from 'astro';
 import { getOne, updateProject, deleteProject } from '../../../lib/projects';
-import { withWriteLock } from '../../../lib/write-lock';
 
 export const prerender = false;
 
@@ -35,20 +34,18 @@ export const PATCH: APIRoute = async ({ params, request }) => {
   const body = await request.json().catch(() => null);
   if (!body) return bad('body inválido');
   try {
-    const p = await withWriteLock(() => updateProject(file, body));
+    const p = updateProject(file, body);
     return ok(p);
   } catch (e) {
     return bad((e as Error).message, 404);
   }
 };
 
-export const DELETE: APIRoute = async ({ params }) => {
+export const DELETE: APIRoute = ({ params }) => {
   const file = params.file;
   if (!file) return bad('file requerido');
   try {
-    await withWriteLock(() => {
-      deleteProject(file);
-    });
+    deleteProject(file);
     return ok({ ok: true });
   } catch (e) {
     return bad((e as Error).message, 404);
